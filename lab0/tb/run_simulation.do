@@ -1,6 +1,7 @@
 vlib work
 
-vlog -sv mux.v mux_tb.sv
+vlog -sv ../rtl/mux.v
+vlog -sv mux_tb.sv
 
 vsim work.mux_tb
 
