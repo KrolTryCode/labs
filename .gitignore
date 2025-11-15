@@ -1,0 +1,13 @@
+*
+
+!*/
+!.gitignore
+!README*
+
+!*.sv
+!*.v
+!*.qsf
+!*.qpf
+!*.bdf
+!*.sdc
+!*.do
