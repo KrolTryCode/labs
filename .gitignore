@@ -11,3 +11,6 @@
 !*.bdf
 !*.sdc
 !*.do
+
+lab*/quartus_prj/incremental_db/README
+lab*/quartus_prj/db/README

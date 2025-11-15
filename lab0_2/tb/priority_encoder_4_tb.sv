@@ -62,7 +62,7 @@ module priority_encoder_4_tb();
 
         data_val_i = 0;
         #10;
-        errors_counter += check_and_print( test_counter, data_i, '0, '0, 
+        errors_counter += check_and_print( test_counter, data_i, left_expected, right_expected, 
           data_left_o, data_right_o, data_val_i, data_val_o );
       end
 
