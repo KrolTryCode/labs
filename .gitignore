@@ -11,6 +11,7 @@
 !*.bdf
 !*.sdc
 !*.do
+!*.py
 
 lab*/quartus_prj/incremental_db/README
 lab*/quartus_prj/db/README

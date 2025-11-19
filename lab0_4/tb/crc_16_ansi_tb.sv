@@ -3,75 +3,87 @@
 module crc_16_ansi_tb();
   localparam W          = 16;
   localparam BIT_COUNT  = 8;
-  localparam TEST_COUNT = 10;
+  localparam CLK_PERIOD = 10;
+  localparam TEST_CASES = 10;
 
   logic                 clk_i, rst_i, data_i;
-  logic [W-1:0]         data_o, exp1, exp2;
-  
+  logic [W-1:0]         data_o, expected_crc;
+
   logic [BIT_COUNT-1:0] test_seq;
-  integer               errors_counter, test_counter, i;
-  
-  always #5 clk_i = ~clk_i;
-  
+  string                test_seq_hex;
+  int                   i, j, test_counter, errors_counter;
+
+  initial
+    begin: clk_generation
+      clk_i = 0;
+      forever #( CLK_PERIOD / 2 ) clk_i = ~clk_i;
+    end
+
   crc_16_ansi dut(
-    .clk_i(  clk_i  ),
-    .rst_i(  rst_i  ),
+    .clk_i ( clk_i  ),
+    .rst_i ( rst_i  ),
     .data_i( data_i ),
     .data_o( data_o )
   );
-  
-  initial
+
+  task test();
     begin
-      clk_i          = 0;
-      rst_i          = 1;
-      data_i         = 0;
-      errors_counter = 0;
-      
-      for( test_counter = 0; test_counter < TEST_COUNT; test_counter++ )
+      for( j = 0; j < TEST_CASES; j++ ) 
         begin
-          test_seq = $urandom;
-          
-          @( negedge clk_i );
-          rst_i = 0;
-          
-          for( i = 0; i < BIT_COUNT; i++ )
+          test_seq     = $urandom_range( 0, 255 );
+          test_seq_hex = $sformatf( "%h", test_seq );
+
+          test_counter++;
+
+          rst_i  = 1;
+          data_i = 0;
+          @( posedge clk_i );
+          rst_i  = 0;
+
+          for( i = 0; i < BIT_COUNT; i++ ) 
             begin
-              data_i = test_seq[i];
-              @( negedge clk_i );
+              data_i = test_seq[i]; 
+              @( posedge clk_i );
             end
-            
-          exp1 = data_o;
-          
-          rst_i = 1;
-          @( negedge clk_i );
-          rst_i = 0;
-          
-          for( i = 0; i < BIT_COUNT; i++ )
+
+          expected_crc = call_python_crc(test_seq_hex);
+          @( posedge clk_i );
+
+          if( data_o !== expected_crc )
             begin
-              data_i = test_seq[i];
-              @( negedge clk_i );
-            end
-            
-          exp2 = data_o;
-          
-          
-          if( exp1 !== exp2 ) 
-            begin
-              $display( "test %0d: fail (seq: %b, exp1: %04h, exp2: %04h)", 
-                test_counter, test_seq, exp1, exp2 );
+              $display( "ERROR: crc mismatch for input %s", test_seq_hex );
               errors_counter++;
             end
-            
-          rst_i = 1;
-        end
-        
-        $display( "RESULTS" );
-        
-        if( errors_counter == 0 ) 
-          $display( "ALL TESTS PASSED" );
-        else
-          $display( "FAILED: %0d errors out of %0d tests", errors_counter, TEST_COUNT );
-          
-        $finish;
+      end
+
+      if( errors_counter == 0 )
+        $display( "all %0d test cases passed", test_counter );
+      else
+        $display( "%0d errors found in %0d test cases.", errors_counter, test_counter );
+    end
+  endtask
+
+  function logic [15:0] call_python_crc( input string data_hex );
+    int          f;
+    string       line;
+    logic [15:0] result;
+
+    $system( $sformatf( "python calc_crc.py %s > py_out.txt", data_hex ) );
+
+    f = $fopen( "py_out.txt", "r" );
+    if( f )
+      begin
+        if( $fgets( line, f ) )
+          result = line.atohex();
+        $fclose( f );
+      end
+
+    return result;
+  endfunction
+
+  initial 
+    begin
+      test();
+      $finish;
     end
 endmodule
