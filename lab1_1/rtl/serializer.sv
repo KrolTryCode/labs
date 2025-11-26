@@ -30,7 +30,7 @@ always_ff @( posedge clk_i )
         ser_data_o     <= shift_reg[W_DATA-1];
         ser_data_val_o <= 1;
         shift_reg      <= shift_reg << 1;
-        bit_counter--;
+        bit_counter    <= bit_counter - 1'b1;
       end
     else
       begin
@@ -40,8 +40,8 @@ always_ff @( posedge clk_i )
         if( data_val_i && ( data_mod_i == 0 || data_mod_i > 2 ) )
           begin
             shift_reg   <= data_i;
-            bit_counter <= ( data_mod_i == 0 ) ? ( W_DATA     ):
-                                                 ( data_mod_i );
+            bit_counter <= ( data_mod_i == 0 ) ? ( W_DATA[$clog2(W_DATA):0] ):
+                                                 ( data_mod_i               );
           end
       end
 
