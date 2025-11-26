@@ -8,7 +8,7 @@ module deserializer #( parameter W = 16 )(
 );
 
   logic [W-1:0]         shift_reg;
-  logic [$clog2(W):0] bit_counter;
+  logic [$clog2(W):0]   bit_counter;
 
   always_ff @( posedge clk_i )
     begin
@@ -17,7 +17,7 @@ module deserializer #( parameter W = 16 )(
           deser_data_o     <= 0;
           deser_data_val_o <= 0;
           shift_reg        <= 0;
-          bit_counter      <= W;
+          bit_counter      <= W[$clog2(W):0];
         end
       else
         begin
@@ -27,14 +27,14 @@ module deserializer #( parameter W = 16 )(
               if( data_val_i )
                 begin
                   shift_reg[bit_counter - 1] <= data_i;
-                  bit_counter--;
+                  bit_counter                <= bit_counter - 1'b1;
                 end
             end
           else
             begin
               deser_data_o     <= shift_reg;
               deser_data_val_o <= 1;
-              bit_counter      <= W;
+              bit_counter      <= W[$clog2(W):0];
             end
         end
     end	

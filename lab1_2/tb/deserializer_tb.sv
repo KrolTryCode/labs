@@ -1,6 +1,6 @@
 `timescale 1ns/1ns
 module deserializer_tb();
-
+  localparam TEST_COUNT = 50;
   localparam W          = 16;
   localparam CLK_PERIOD = 10;
 
@@ -12,7 +12,9 @@ module deserializer_tb();
   logic [W-1:0] deser_data_o;
   logic [W-1:0] expected;
 
-  int           errors, test_count;
+  int           errors, test_counter;
+  logic [W-1:0] test_cases[$];
+  int i, j;
 
   initial 
     begin: clk_generation
@@ -32,48 +34,88 @@ module deserializer_tb();
     .deser_data_val_o( deser_data_val_o )
   );
 
-  task test();
-    test_count = 0;
-    errors     = 0;
-    expected   = 0;
+  task build_test_cases();
+    logic [W-1:0] test_case;
 
-    data_i     = 0;
-    data_val_i = 0;
+    test_case = '0;
+    test_cases.push_back( test_case );
 
-    srst_i     = 1;
-    @( posedge clk_i)
-    srst_i = 0;
+    test_case = {W{1'b1}};
+    test_cases.push_back( test_case );
 
-    for( expected = 0; expected <= {W{1'b1}}; expected++ )
+    for( int i = 0; i < TEST_COUNT - 2; i++ )
       begin
-        if( expected == {W{1'b1}} ) break;
+        test_case = $urandom_range( 0, {W{1'b1}} );
+        test_cases.push_back( test_case );
+      end
+  endtask
 
-        test_count++;
-        data_val_i = 1;
+  task init_signals();
+    test_counter = 0;
+    errors       = 0;
+    expected     = 0;
 
-        for( int i = W; i > 0; i-- )
+    data_i       = 0;
+    data_val_i   = 0;
+
+    srst_i       = 1;
+    @( posedge clk_i );
+    srst_i       = 0;
+  endtask
+
+  task input_driver();
+    build_test_cases();
+    foreach( test_cases[i] )
+      begin
+        j = 0;
+        while( j < W )
           begin
-            data_i = expected[i-1];
+            data_val_i = $urandom_range( 0, 1 );
+            if( data_val_i )
+              begin
+                data_i = test_cases[i][W-1-j];
+                j++;
+              end
+            else
+              data_i = 1'b0;
             @( posedge clk_i );
           end
 
-        @( posedge clk_i );
         data_val_i = 0;
-        @( posedge clk_i );
-
-        if( expected != deser_data_o )
-          begin
-            $display( "error: mismatch expected= %b, got= %b", expected, deser_data_o );
-            errors++;
-          end
-
+        data_i     = 0;
         @( posedge clk_i );
       end
+  endtask
 
-      if( errors == 0 && test_count > 0 )
-        $display( "all %0d tests passed", test_count );
-      else
-        $display( "%0d tests failed out of %0d", errors, test_count );
+  task output_monitor();
+    test_counter = 0;
+    for( int i = 0; i < test_cases.size(); i++ )
+      begin
+        expected = test_cases[i];
+
+        wait ( deser_data_val_o );
+        repeat( 2 ) @( posedge clk_i );
+        
+        if( expected != deser_data_o )
+          begin
+            $display( "fail: test %0d, expected=0x%b, got=0x%b", i, test_cases[i], deser_data_o );
+            errors++;
+          end
+        test_counter++;
+      end
+  endtask
+
+  task test();
+    init_signals;
+    fork
+      input_driver();
+      output_monitor();
+    join
+
+    if( errors == 0 && test_counter > 0 )
+      $display( "all %0d tests passed", test_counter );
+    else
+     $display( "%0d tests failed out of %0d", errors, test_counter );
 
     $finish;
   endtask
