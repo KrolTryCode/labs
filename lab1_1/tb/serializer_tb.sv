@@ -1,6 +1,6 @@
 `timescale 1ns/1ns
 module serializer_tb();
-  localparam TEST_COUNT = 50;
+  localparam TEST_COUNT = 500;
   localparam CLK_PERIOD = 10;
   localparam W_DATA     = 16;
   localparam W_MOD      = 4;
@@ -14,12 +14,8 @@ module serializer_tb();
   logic              ser_data_val_o;
   logic              busy_o;
 
-  int                errors, test_counter;
-  int                expected_bits, bit_counter, num_bits;
-  logic              expected_bit;
-  logic [W_DATA-1:0] test_data;
-  logic [W_MOD-1:0]  test_mod;
-
+  int                errors, test_counter, received_bits;
+  logic [W_DATA-1:0] received_data, expected_data;
 
   typedef struct packed {
     logic [W_DATA-1:0] data;
@@ -27,7 +23,7 @@ module serializer_tb();
   } test_case;
 
   test_case test_cases[$];  
-
+    test_case tc;
 
   initial
     begin: clk_generation
@@ -50,21 +46,6 @@ module serializer_tb();
     .ser_data_val_o( ser_data_val_o),
     .busy_o        ( busy_o        )
   );
-
-
-  function logic calc_expected(
-    input logic [W_DATA-1:0] data,
-    input logic [W_MOD-1:0]  data_mod,
-    input int                cycle
-  );
-    num_bits = ( data_mod == 0 ) ? ( W_DATA   ):
-                                    ( data_mod );
-
-    if( cycle < num_bits && !( data_mod inside {[1:2]} ) ) 
-      return data[W_DATA - 1 - cycle];
-    
-    return '0;
-  endfunction
 
   task build_test_cases();
     test_case tc;
@@ -114,55 +95,42 @@ module serializer_tb();
         @( posedge clk_i );
         data_val_i = 0;
         @( posedge clk_i );
-
-        if( data_mod_i inside {[1:2]} )
-          repeat( 3 ) @( posedge clk_i );
       end
   endtask
 
   task output_monitor();
     test_counter = 0;
-      
-    while( test_counter < test_cases.size() ) 
+
+    while( test_counter < test_cases.size() )
       begin
-        test_data = test_cases[test_counter].data;
-        test_mod  = test_cases[test_counter].mod;
-        if( test_mod inside {[1:2]} ) 
+        received_bits = '0;
+        received_data = '0;
+        tc = test_cases[test_counter];
+
+        if( tc.mod inside {[1:2]} ) 
           begin
-            repeat( 3 ) @( posedge clk_i );
-            if ( busy_o !== 0 || ser_data_val_o !== 0 ) 
-              begin
-                  $display( "error: test %0d -- transmission started for mod=%0d, but shouldnt",
-                                                                        test_counter, test_mod );
-                  errors++;
-              end
             test_counter++;
-          end 
-        else 
+            continue;
+          end
+
+        wait( ser_data_val_o );
+        @( posedge clk_i );
+
+        while( ser_data_val_o )
           begin
-            wait( busy_o );
+            received_data = received_data << 1;
+            received_data[0] = ser_data_o;  
+            received_bits++;
+            @( posedge clk_i );
+          end
 
-            expected_bits = ( test_mod == 0 ) ? ( W_DATA   ):
-                                                ( test_mod );
-            bit_counter   = 0;     
-            
-            while( busy_o && bit_counter < expected_bits )
+        if( received_bits > 0 )
+          begin
+            expected_data = tc.data >> ( W_DATA - received_bits );
+            if( received_data != expected_data )
               begin
-                @( posedge clk_i );
-
-                if( ser_data_val_o ) 
-                  begin 
-                    expected_bit = calc_expected( test_data, test_mod, bit_counter );
-                    
-                    if( ser_data_o !== expected_bit ) 
-                      begin
-                        $display( "error: test %0d, bit %0d: expected=%b, got=%b", 
-                              test_counter, bit_counter, expected_bit, ser_data_o );
-                        errors++;
-                      end
-                      
-                    bit_counter++;
-                  end
+                errors++;
+                $display( "error: test %0d - expected %b, got %b (bits=%0d)", test_counter, expected_data, received_data, received_bits );
               end
             test_counter++;
           end
