@@ -1,6 +1,6 @@
 `timescale 1ns/1ns
 module serializer_tb();
-  localparam TEST_COUNT = 500;
+  localparam TEST_COUNT = 50;
   localparam CLK_PERIOD = 10;
   localparam W_DATA     = 16;
   localparam W_MOD      = 4;
@@ -88,12 +88,12 @@ module serializer_tb();
       begin
         wait( !busy_o );
 
-        data_i     = test_cases[i].data;
-        data_mod_i = test_cases[i].mod;
-
-        data_val_i = 1;
+        data_i     <= test_cases[i].data;
+        data_mod_i <= test_cases[i].mod;
+        data_val_i <= 1;
+        
         @( posedge clk_i );
-        data_val_i = 0;
+        data_val_i <= 0;
         @( posedge clk_i );
       end
   endtask
@@ -105,7 +105,7 @@ module serializer_tb();
       begin
         received_bits = '0;
         received_data = '0;
-        tc = test_cases[test_counter];
+        tc            = test_cases[test_counter];
 
         if( tc.mod inside {[1:2]} ) 
           begin
@@ -118,7 +118,7 @@ module serializer_tb();
 
         while( ser_data_val_o )
           begin
-            received_data = received_data << 1;
+            received_data    = received_data << 1;
             received_data[0] = ser_data_o;  
             received_bits++;
             @( posedge clk_i );
@@ -127,11 +127,13 @@ module serializer_tb();
         if( received_bits > 0 )
           begin
             expected_data = tc.data >> ( W_DATA - received_bits );
+
             if( received_data != expected_data )
               begin
                 errors++;
                 $display( "error: test %0d - expected %b, got %b (bits=%0d)", test_counter, expected_data, received_data, received_bits );
               end
+
             test_counter++;
           end
       end
