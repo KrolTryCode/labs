@@ -1,4 +1,4 @@
-module top #(parameter WIDTH = 16 )(
+module top #(parameter WIDTH = 64 )(
   input                          clk_i,
   input                          srst_i,
 

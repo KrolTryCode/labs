@@ -9,32 +9,67 @@ module bit_population_counter #( parameter WIDTH = 16 )(
   output logic                       data_val_o
 );
 
-  logic [$clog2(WIDTH):0] count;
+  // Calculate number of stages needed (16 bits per stage); round up if WIDTH is not multiple of 16
+  localparam STAGES     = ( WIDTH + 15 ) / 16;
+  localparam PART_WIDTH = WIDTH / STAGES;
+
+  logic [$clog2(WIDTH):0]      final_sum;
+  logic [$clog2(PART_WIDTH):0] stage_sum_rg [STAGES-1:0];
+  logic                        val_rg;
+
+  genvar i;
+  generate
+    for( i = 0; i < STAGES; i++ )
+      begin: stage_gen
+        localparam START_BIT = i * PART_WIDTH;
+        localparam END_BIT   = (START_BIT + PART_WIDTH > WIDTH) ? ( WIDTH - 1                  ):
+                                                                  ( START_BIT + PART_WIDTH - 1 );
+        logic [$clog2(PART_WIDTH):0] stage_sum;
+
+        always_comb
+          begin
+            stage_sum = '0;
+            for( int j = START_BIT; j <= END_BIT; j++ )
+              if( data_i[j] )
+                stage_sum = stage_sum + 1'b1;
+          end
+
+        always_ff @( posedge clk_i )
+          begin
+            if( srst_i )
+              stage_sum_rg[i] <= '0;
+            else
+              stage_sum_rg[i] <= stage_sum;
+          end
+      end
+  endgenerate
 
   always_comb
     begin
-      count = '0;
-      for( int i = 0; i < WIDTH; i++ )
-        if( data_i[i] )
-          count = count + 1'b1;
+      final_sum = '0;
+      for( int k = 0; k < STAGES; k++ )
+        final_sum = final_sum + stage_sum_rg[k];
     end
 
   always_ff @( posedge clk_i )
     begin
-      if( srst_i )
+      if( srst_i ) 
         begin
           data_o     <= '0;
           data_val_o <= 1'b0;
         end
       else
         begin
-          if( data_val_i )
-            begin
-              data_o     <= count;
-              data_val_o <= 1'b1;
-            end
-          else
-            data_val_o   <= 1'b0;
+          data_o     <= final_sum;
+          data_val_o <= val_rg;
         end
+    end 
+
+  always_ff @( posedge clk_i )
+    begin
+      if( srst_i )
+        val_rg <= 1'b0;
+      else
+        val_rg <= data_val_i;
     end
 endmodule
