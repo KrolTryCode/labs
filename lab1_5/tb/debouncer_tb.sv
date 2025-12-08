@@ -104,8 +104,8 @@ module debouncer_tb();
                 if( prev_key && !tr.key_value )
                   begin
                     transition_cycle      = tr.cycle_num - 1;
-                    // strobe should appear after GLITCH_TACTS + 2 clocks if the signal is stable GLITCH_TACTS + 1 clock
-                    expected_strobe_cycle = transition_cycle + GLITCH_TACTS + 2;
+                    // strobe should appear after GLITCH_TACTS + 2 clocks if the signal is stable GLITCH_TACTS + 1 clock + 2 clock input delay
+                    expected_strobe_cycle = transition_cycle + GLITCH_TACTS + 4;
                     waiting_for_strobe    = 1'b1;
                   end
                 

@@ -16,13 +16,20 @@ module debouncer #(
   logic [$clog2(GLITCH_TACTS) + 1:0] counter            =  '0;
   logic                              key_debounced      = 1'b1;
   logic                              prev_key_debounced = 1'b1;
+  logic                              key_i_rg, key_i_sync;
+
+  always_ff @(posedge clk_i)
+    begin
+      key_i_rg   <= key_i;
+      key_i_sync <= key_i_rg;
+    end
 
   always_ff @( posedge clk_i ) 
-    if( key_i != key_debounced ) 
+    if( key_i_sync != key_debounced ) 
       begin
         if( counter == GLITCH_TACTS ) 
           begin
-            key_debounced <= key_i;
+            key_debounced <= key_i_sync;
             counter       <= '0;
           end 
         else 
