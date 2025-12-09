@@ -40,20 +40,40 @@ module debouncer_tb();
 
   task input_driver();
     int   stable_time;
+    int   glitch_count;
     logic new_key_value;
+    logic base_value;
 
     for( int i = 0; i < TEST_COUNT; i++ )
       begin
-        new_key_value = $urandom_range( 0, 1                 );
-        stable_time   = $urandom_range( 1, GLITCH_TACTS + 20 );
+        new_key_value = $urandom_range( 0, 1 );
+        
+        // 80% chance to glitch
+        if( $urandom_range(0, 99) < 80 )
+          begin
+            glitch_count = $urandom_range( 1, GLITCH_TACTS );
+            base_value   = new_key_value;
+            
+            for( int i = 0; i < glitch_count; i++ )
+              begin
+                @( posedge clk_i );
+                key_i <= base_value;
+                
+                repeat( $urandom_range( 1, GLITCH_TACTS - 1 ) ) 
+                  @( posedge clk_i );
+                
+                key_i <= ~base_value;
+              end
+          end
 
         @( posedge clk_i );
         key_i <= new_key_value;
 
+        stable_time = $urandom_range( GLITCH_TACTS + 1, GLITCH_TACTS + 20 );
         repeat( stable_time ) @( posedge clk_i );
       end
     
-    repeat( GLITCH_TACTS ) @( posedge clk_i );
+    repeat( GLITCH_TACTS + 10 ) @( posedge clk_i );
     test_done = 1'b1;
   endtask
 

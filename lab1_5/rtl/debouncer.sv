@@ -13,9 +13,9 @@ module debouncer #(
   // + 999 to round up, / 1000 to convert from ns to ms
   localparam int GLITCH_TACTS = (GLITCH_TIME_NS * CLK_FREQ_MHZ + 999) / 1000;
 
-  logic [$clog2(GLITCH_TACTS) + 1:0] counter            =  '0;
-  logic                              key_debounced      = 1'b1;
-  logic                              prev_key_debounced = 1'b1;
+  logic [$clog2(GLITCH_TACTS) + 1:0] counter            = '0;
+  logic                              key_debounced      = '0;
+  logic                              prev_key_debounced = '0;
   logic                              key_i_rg, key_i_sync;
 
   always_ff @(posedge clk_i)
