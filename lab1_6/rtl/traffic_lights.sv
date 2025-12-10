@@ -1,9 +1,10 @@
 module traffic_lights #(
   parameter BLINK_HALF_PERIOD_MS  = 100,
   parameter BLINK_GREEN_TIME_TICK = 2000,
-  parameter RED_YELLOW_MS         = 2000
+  parameter RED_YELLOW_MS         = 2000,
+  parameter CLK_FREQ_HZ           = 2000
 )(
-  input               clk_i, //2kHz
+  input               clk_i,
   input               srst_i,
 
   input        [2:0]  cmd_type_i,
@@ -15,8 +16,13 @@ module traffic_lights #(
   output logic        green_o
 );
 
+// ticks == time_seconds * CLK_FREQ_HZ == (ms / 1000) * CLK_FREQ_HZ; + 999 to round up
+  function logic [31:0] ms_to_ticks( input logic [31:0] ms );
+    ms_to_ticks = ( ms * CLK_FREQ_HZ + 999 ) / 1000;
+  endfunction
+
   typedef enum logic [2:0] {
-    OFF          =  '0,
+    OFF          = 3'd0,
     RED          = 3'd1,
     RED_YELLOW   = 3'd2,
     GREEN        = 3'd3,
@@ -34,167 +40,143 @@ module traffic_lights #(
     CMD_YELLOW_BURN  = 3'd5 
   } cmd_type_t;
 
-  fsm_state state;
-  int       timer, blink_timer;
-  logic     blink_state;
+  fsm_state    state, next_state;
+  logic [31:0] timer, blink_timer;
+  logic        blink_state;
 
   logic [15:0] green_burn_time_ms;
   logic [15:0] red_burn_time_ms;
   logic [15:0] yellow_burn_time_ms;
 
-  int green_burn_ticks, red_burn_ticks, yellow_burn_ticks, red_yellow_ticks, blink_half_period_ticks;
+  logic [31:0] green_burn_ticks, red_burn_ticks, yellow_burn_ticks;
 
-  // constants for converting ms to ticks (2 kHz --> 2 ticks/ms --> ticks == ms * 2)
-  assign green_burn_ticks        = green_burn_time_ms   * 2;
-  assign red_burn_ticks          = red_burn_time_ms     * 2;
-  assign yellow_burn_ticks       = yellow_burn_time_ms  * 2;
-  assign red_yellow_ticks        = RED_YELLOW_MS        * 2;
-  assign blink_half_period_ticks = BLINK_HALF_PERIOD_MS * 2;
+  localparam   DEFAULT_TIME_MS         = 2000;
+  localparam   RED_YELLOW_TICKS        = ms_to_ticks( RED_YELLOW_MS        );
+  localparam   BLINK_HALF_PERIOD_TICKS = ms_to_ticks( BLINK_HALF_PERIOD_MS );
+  
+  assign       green_burn_ticks        = ms_to_ticks( green_burn_time_ms   );
+  assign       red_burn_ticks          = ms_to_ticks( red_burn_time_ms     );
+  assign       yellow_burn_ticks       = ms_to_ticks( yellow_burn_time_ms  );
+
+
+  always_comb
+    if( cmd_valid_i )
+      case( cmd_type_i )
+        CMD_STANDART: 
+          next_state = RED;
+          
+        CMD_OFF:
+          next_state = OFF;
+
+        CMD_UNCONTROLLED:
+          next_state = UNCONTROLLED;
+
+        default:
+          next_state = state;
+      endcase
+    else
+      case( state )
+        OFF: 
+          next_state = OFF;
+
+        RED: 
+          if( timer >= red_burn_ticks )
+            next_state = RED_YELLOW;
+
+        RED_YELLOW: 
+          if( timer >= RED_YELLOW_TICKS )
+            next_state = GREEN;
+
+        GREEN: 
+          if( timer >= green_burn_ticks )
+            next_state = GREEN_BLINK;
+
+        GREEN_BLINK: 
+          if( timer >= BLINK_GREEN_TIME_TICK )
+            next_state = YELLOW;
+
+        YELLOW: 
+          if( timer >= yellow_burn_ticks ) 
+            next_state = RED;
+
+        UNCONTROLLED:
+          next_state = UNCONTROLLED;
+
+        default:
+          next_state = OFF;
+      endcase
+
 
   always_ff @( posedge clk_i )
-    begin
-      if( srst_i )
+    if( srst_i )
+      begin
+        green_burn_time_ms  <= DEFAULT_TIME_MS;
+        red_burn_time_ms    <= DEFAULT_TIME_MS;
+        yellow_burn_time_ms <= DEFAULT_TIME_MS;
+      end
+    else
+      if( cmd_valid_i )
         begin
-          state               <= OFF;
-          timer               <=   '0;
-          blink_timer         <=   '0;
-          blink_state         <=   '0;
-          green_burn_time_ms  <= 16'd2000;
-          red_burn_time_ms    <= 16'd5000;
-          yellow_burn_time_ms <= 16'd1000;
+          case( cmd_type_i )
+            CMD_GREEN_BURN:  
+              green_burn_time_ms  <= cmd_data_i;
+
+            CMD_RED_BURN:    
+              red_burn_time_ms    <= cmd_data_i;
+
+            CMD_YELLOW_BURN: 
+              yellow_burn_time_ms <= cmd_data_i;
+            default: ;
+          endcase
+        end
+
+
+  always_ff @( posedge clk_i )
+    if( srst_i )
+      state <= OFF;
+    else
+      state <= next_state;
+
+
+  always_ff @( posedge clk_i )
+    if( srst_i )
+      begin
+        timer       <= '0;
+        blink_timer <= '0;
+        blink_state <= '0;
+      end
+    else
+      if( state != next_state )
+        begin
+          timer       <= '0;
+          blink_timer <= '0;
+          blink_state <= '0;
         end
       else
-        begin
-          if( cmd_valid_i )
+        case( state )
+          RED, RED_YELLOW, GREEN, YELLOW:
+            timer <= timer + 1'b1;
+
+          GREEN_BLINK, UNCONTROLLED:
             begin
-              case( cmd_type_i )
-                CMD_STANDART: 
-                  begin
-                    state       <= RED;
-                    timer       <= '0;
-                    blink_timer <= '0;
-                    blink_state <= '0;
-                  end
-                
-                CMD_OFF:
-                  begin
-                    state       <= OFF;
-                    timer       <= '0;
-                    blink_timer <= '0;
-                    blink_state <= '0;
-                  end
+              timer <= timer + 1'b1;
 
-                CMD_UNCONTROLLED:
-                  begin
-                    state       <= UNCONTROLLED;
-                    timer       <= '0;
-                    blink_timer <= '0;
-                    blink_state <= '0;
-                  end
-
-                CMD_GREEN_BURN:
-                  green_burn_time_ms  <= cmd_data_i;
-
-                CMD_RED_BURN:
-                  red_burn_time_ms    <= cmd_data_i;
-
-                CMD_YELLOW_BURN:
-                  yellow_burn_time_ms <= cmd_data_i;
-
-                default: ;
-              endcase
+              if( blink_timer >= BLINK_HALF_PERIOD_TICKS )
+                begin
+                  blink_timer <= '0;
+                  blink_state <= ~blink_state;
+                end
+              else
+                blink_timer <= blink_timer + 1'b1;
             end
-          else
+
+          default:
             begin
-              case( state )
-                OFF: ;
-
-                RED: 
-                  begin
-                    if( timer >= red_burn_ticks )
-                      begin
-                        state <= RED_YELLOW;
-                        timer <= '0;
-                      end
-                    else
-                      timer <= timer + 1'b1;
-                  end
-
-                RED_YELLOW: 
-                  begin
-                    if( timer >= red_yellow_ticks )
-                      begin
-                        state       <= GREEN;
-                        timer       <=  '0;
-                        blink_timer <=  '0;
-                        blink_state <= 1'b0;
-                      end
-                    else
-                      timer <= timer + 1'b1;
-                  end
-
-                GREEN: 
-                  begin
-                    if( timer >= green_burn_ticks )
-                      begin
-                        state       <= GREEN_BLINK;
-                        timer       <=  '0;
-                        blink_timer <=  '0;
-                        blink_state <= 1'b1;
-                      end
-                    else
-                      timer <= timer + 1'b1;
-                  end
-
-                GREEN_BLINK: 
-                  begin
-                    if( blink_timer  >= blink_half_period_ticks )
-                      begin
-                        blink_timer <= '0;
-                        blink_state <= ~blink_state;
-                      end
-                    else
-                      blink_timer <= blink_timer + 1'b1;
-
-                    if( timer >= BLINK_GREEN_TIME_TICK )
-                      begin
-                        state       <= YELLOW;
-                        timer       <= '0;
-                        blink_timer <= '0;
-                      end
-                    else
-                      timer <= timer + 1'b1;
-                  end
-
-                YELLOW: 
-                  begin
-                    if( timer >= yellow_burn_ticks ) 
-                      begin
-                        state <= RED;
-                        timer <= '0;
-                      end 
-                    else
-                        timer <= timer + 1'b1;
-                  end
-
-                UNCONTROLLED:
-                  begin
-                    if( blink_timer >= blink_half_period_ticks ) 
-                      begin
-                        blink_timer <= '0;
-                        blink_state <= ~blink_state;
-                      end
-                    else
-                      blink_timer <= blink_timer + 1'b1;
-                  end
-
-                default:
-                  state <= OFF;
-            endcase
-
+              timer       <= '0;
+              blink_timer <= '0;
+              blink_state <= '0;
             end
-        end
-    end
+        endcase
 
   always_comb 
     begin
@@ -224,9 +206,7 @@ module traffic_lights #(
         UNCONTROLLED:
           yellow_o = blink_state;
 
-        default:
-          begin
-          end
+        default: ;
       endcase 
     end
 

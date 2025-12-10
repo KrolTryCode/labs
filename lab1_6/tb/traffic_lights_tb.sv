@@ -5,7 +5,8 @@ module traffic_lights_tb;
   parameter BLINK_HALF_PERIOD_MS  = 100;
   parameter BLINK_GREEN_TIME_TICK = 2000;
   parameter RED_YELLOW_MS         = 2000;
-  parameter CLK_PERIOD            = 500;
+  parameter CLK_FREQ_HZ           = 2000;
+  parameter CLK_PERIOD            = ( 1_000_000_000 / CLK_FREQ_HZ );
 
   logic        clk_i;
   logic        srst_i;
@@ -21,15 +22,21 @@ module traffic_lights_tb;
   int          errors, passed;
 
   int          green_burn_time_ms, red_burn_time_ms, yellow_burn_time_ms;
-  int          green_ticks, red_ticks, yellow_ticks, red_yellow_ticks, blink_half_period_ticks;
+  int          green_ticks, red_ticks, yellow_ticks;
+
+
+  function logic [31:0] ms_to_ticks( input logic [31:0] ms );
+    ms_to_ticks = ( ms * CLK_FREQ_HZ + 999 ) / 1000;
+  endfunction
+
+  localparam red_yellow_ticks        = ms_to_ticks( RED_YELLOW_MS        );
+  localparam blink_half_period_ticks = ms_to_ticks( BLINK_HALF_PERIOD_MS );
 
   always_comb 
     begin
-      green_ticks             = green_burn_time_ms   * 2;
-      red_ticks               = red_burn_time_ms     * 2;
-      yellow_ticks            = yellow_burn_time_ms  * 2;
-      red_yellow_ticks        = RED_YELLOW_MS        * 2;
-      blink_half_period_ticks = BLINK_HALF_PERIOD_MS * 2;
+      green_ticks  = ms_to_ticks(green_burn_time_ms);
+      red_ticks    = ms_to_ticks(red_burn_time_ms);
+      yellow_ticks = ms_to_ticks(yellow_burn_time_ms);
     end
     
   typedef enum logic [2:0] {
@@ -41,11 +48,12 @@ module traffic_lights_tb;
     CMD_YELLOW_BURN  = 3'd5 
   } cmd_type_t;
 
-    
+
   traffic_lights #(
     .BLINK_HALF_PERIOD_MS ( BLINK_HALF_PERIOD_MS  ),
     .BLINK_GREEN_TIME_TICK( BLINK_GREEN_TIME_TICK ),
-    .RED_YELLOW_MS        ( RED_YELLOW_MS         )
+    .RED_YELLOW_MS        ( RED_YELLOW_MS         ),
+    .CLK_FREQ_HZ          ( CLK_FREQ_HZ           )
   ) dut (
     .clk_i      ( clk_i       ),
     .srst_i     ( srst_i      ),
@@ -57,11 +65,13 @@ module traffic_lights_tb;
     .green_o    ( green_o     )
   );
 
+
   initial 
     begin
       clk_i <= 0;
       forever #( CLK_PERIOD / 2 ) clk_i = ~clk_i;
     end
+
 
   task send_cmd( input cmd_type_t cmd, input int data = 0 );
     @( posedge clk_i );
