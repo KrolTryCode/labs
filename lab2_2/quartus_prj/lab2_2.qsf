@@ -18,14 +18,14 @@
 #
 # Quartus Prime
 # Version 18.1.0 Build 625 09/12/2018 SJ Lite Edition
-# Date created = 13:24:01  January 08, 2026
+# Date created = 17:47:31  January 11, 2026
 #
 # -------------------------------------------------------------------------- #
 #
 # Notes:
 #
 # 1) The default values for assignments are stored in the file:
-#		lab2_1_assignment_defaults.qdf
+#		lab2_2_assignment_defaults.qdf
 #    If this file doesn't exist, see file:
 #		assignment_defaults.qdf
 #
@@ -40,7 +40,7 @@ set_global_assignment -name FAMILY "Cyclone V"
 set_global_assignment -name DEVICE 5CSEBA4U19C8
 set_global_assignment -name TOP_LEVEL_ENTITY top
 set_global_assignment -name ORIGINAL_QUARTUS_VERSION 18.1.0
-set_global_assignment -name PROJECT_CREATION_TIME_DATE "13:24:01  JANUARY 08, 2026"
+set_global_assignment -name PROJECT_CREATION_TIME_DATE "17:47:31  JANUARY 11, 2026"
 set_global_assignment -name LAST_QUARTUS_VERSION "18.1.0 Lite Edition"
 set_global_assignment -name PROJECT_OUTPUT_DIRECTORY output_files
 set_global_assignment -name MIN_CORE_JUNCTION_TEMP 0
@@ -50,24 +50,24 @@ set_global_assignment -name POWER_PRESET_COOLING_SOLUTION "23 MM HEAT SINK WITH 
 set_global_assignment -name POWER_BOARD_THERMAL_MODEL "NONE (CONSERVATIVE)"
 set_global_assignment -name TIMING_ANALYZER_MULTICORNER_ANALYSIS ON
 set_global_assignment -name NUM_PARALLEL_PROCESSORS ALL
-set_location_assignment PIN_C5 -to clk_i
+set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/simple_dual_port_ram.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/top.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/avalon_st_sorter.sv
 set_global_assignment -name PARTITION_NETLIST_TYPE SOURCE -section_id Top
 set_global_assignment -name PARTITION_FITTER_PRESERVATION_LEVEL PLACEMENT_AND_ROUTING -section_id Top
 set_global_assignment -name PARTITION_COLOR 16764057 -section_id Top
-set_instance_assignment -name VIRTUAL_PIN ON -to almost_full_o
-set_instance_assignment -name VIRTUAL_PIN ON -to empty_o
-set_instance_assignment -name VIRTUAL_PIN ON -to full_o
-set_instance_assignment -name VIRTUAL_PIN ON -to rdreq_i
-set_instance_assignment -name VIRTUAL_PIN ON -to srst_i
-set_instance_assignment -name VIRTUAL_PIN ON -to wrreq_i
-set_instance_assignment -name VIRTUAL_PIN ON -to data_i
-set_instance_assignment -name VIRTUAL_PIN ON -to q_o
-set_instance_assignment -name VIRTUAL_PIN ON -to usedw_o
-set_instance_assignment -name VIRTUAL_PIN ON -to almost_empty_o
+set_global_assignment -name SDC_FILE avalon_st_sorter.sdc
+set_location_assignment PIN_C5 -to clk_i
 set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to clk_i
-set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/simple_dual_port_ram.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/top.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/fifo.sv
-set_global_assignment -name VECTOR_WAVEFORM_FILE Waveform.vwf
-set_global_assignment -name SDC_FILE fifo.sdc
+set_instance_assignment -name VIRTUAL_PIN ON -to snk_ready_o
+set_instance_assignment -name VIRTUAL_PIN ON -to snk_startofpacket_i
+set_instance_assignment -name VIRTUAL_PIN ON -to snk_valid_i
+set_instance_assignment -name VIRTUAL_PIN ON -to src_endofpacket_o
+set_instance_assignment -name VIRTUAL_PIN ON -to src_ready_i
+set_instance_assignment -name VIRTUAL_PIN ON -to src_startofpacket_o
+set_instance_assignment -name VIRTUAL_PIN ON -to src_valid_o
+set_instance_assignment -name VIRTUAL_PIN ON -to srst_i
+set_instance_assignment -name VIRTUAL_PIN ON -to snk_data_i
+set_instance_assignment -name VIRTUAL_PIN ON -to src_data_o
+set_instance_assignment -name VIRTUAL_PIN ON -to snk_endofpacket_i
 set_instance_assignment -name PARTITION_HIERARCHY root_partition -to | -section_id Top

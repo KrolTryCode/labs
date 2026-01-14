@@ -29,7 +29,6 @@ module fifo #(
 );
   localparam DEPTH = 1 << AWIDTH;
 
-  logic [DWIDTH - 1:0]      mem [DEPTH - 1:0];
   logic [DWIDTH - 1:0]      mem_q;
 
   logic [AWIDTH - 1:0]      wr_ptr, rd_ptr, rd_addr;
@@ -68,9 +67,17 @@ module fifo #(
         end
     end
 
-  always_ff @( posedge clk_i )
-    if( do_write )
-      mem[wr_ptr] <= data_i;
+  simple_dual_port_ram #(
+      .ADDR_WIDTH( AWIDTH ),
+      .DATA_WIDTH( DWIDTH )
+    ) ram_inst (
+      .clk   ( clk_i    ),
+      .waddr ( wr_ptr   ),
+      .raddr ( rd_addr  ),
+      .wdata ( data_i   ),
+      .we    ( do_write ),
+      .q     ( mem_q    )
+    );
 
   generate
     if( SHOWAHEAD )
@@ -79,7 +86,7 @@ module fifo #(
           begin
             if( !srst_i )
               if( !empty )            //for holding output when empty like scfifo
-                q_o <= mem[rd_addr];
+                q_o <= mem_q;
           end
       end
     else
@@ -88,7 +95,7 @@ module fifo #(
           begin
             if( !srst_i )
               if( do_read )
-                q_o <= mem[rd_ptr];
+                q_o <= mem_q;
           end
       end
   endgenerate
@@ -101,7 +108,6 @@ module fifo #(
         empty_delayed <= empty;
     end
 
-  //this address logic for inference memory blocks without attributes
   always_comb 
     begin
       if( SHOWAHEAD && do_read && usedw > 1 )

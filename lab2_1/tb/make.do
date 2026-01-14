@@ -5,6 +5,7 @@ set ALTERA_LIB "$QUARTUS_PATH/eda/sim_lib"
 
 vlog "$ALTERA_LIB/altera_mf.v" 
 
+vlog -sv ../rtl/simple_dual_port_ram.sv
 vlog -sv fifo_tb.sv
 vlog -sv ../rtl/fifo.sv
 
