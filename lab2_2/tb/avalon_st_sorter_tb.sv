@@ -1,9 +1,11 @@
 `timescale 1ns/1ns
 
 module avalon_st_sorter_tb;
-  parameter DWIDTH      = 10;
-  parameter MAX_PKT_LEN = 60;
-  parameter CLK_PERIOD  = 10;
+  parameter DWIDTH       = 10;
+  parameter MAX_PKT_LEN  = 60;
+  parameter CLK_PERIOD   = 10;
+  parameter RANDOM_TESTS = 100;
+  parameter MAX_PAUSE    = 10;
 
   logic                   clk_i;
   logic                   srst_i;
@@ -63,14 +65,14 @@ module avalon_st_sorter_tb;
     @(posedge clk_i);
   endtask
 
-  task send_packet( input logic [DWIDTH-1:0] data_queue[$] );
+  task send_packet( input logic [DWIDTH-1:0] data_queue[$], input int pause_probability );
     int i;
     
     while( !snk_ready_o ) @( posedge clk_i );
     
     for( i = 0; i < data_queue.size(); i++ ) 
       begin
-        @(posedge clk_i);
+        @( posedge clk_i );
         snk_valid_i         = 1;
         snk_data_i          = data_queue[i];
         snk_startofpacket_i = ( i == 0 );
@@ -78,6 +80,13 @@ module avalon_st_sorter_tb;
         
         while( !snk_ready_o )
           @( posedge clk_i );
+
+        if( $urandom_range( 0, 99 ) < pause_probability && i < data_queue.size() - 1 ) 
+          begin
+            @( posedge clk_i );
+            snk_valid_i = 0;
+            repeat( $urandom_range( 1, MAX_PAUSE ) ) @( posedge clk_i );
+          end
       end
     
     @( posedge clk_i );
@@ -135,16 +144,22 @@ module avalon_st_sorter_tb;
     return 1;
   endfunction
 
+  function automatic void generate_random_packet( ref logic [DWIDTH-1:0] data_queue[$], int length );
+    data_queue.delete();
+    for( int i = 0; i < length; i++ ) 
+      data_queue.push_back( $urandom_range( 0, ( 1<<DWIDTH ) - 1 ) );
+  endfunction
 
-  task run_test( logic [DWIDTH-1:0] test_data[$] );
+
+  task run_test( logic [DWIDTH-1:0] test_data[$], int pause_probability = 0 );
     test_num++;
 
-    input_packet = test_data;
+    input_packet    = test_data;
     expected_packet = test_data;
     sort_packet( expected_packet );
 
     fork
-      send_packet   ( input_packet  );
+      send_packet   ( input_packet, pause_probability );
       
       receive_packet( output_packet );
     join
@@ -193,6 +208,21 @@ module avalon_st_sorter_tb;
 
       temp_queue = '{5, 3, 8, 3, 1, 5, 9, 1};
       run_test(temp_queue);
+
+      for( int i = 0; i < RANDOM_TESTS; i++ )
+        begin
+          automatic int pkt_len = $urandom_range( 2, MAX_PKT_LEN );
+          generate_random_packet( temp_queue, pkt_len );
+          run_test( temp_queue ); 
+        end
+      
+      for( int i = 0; i < RANDOM_TESTS; i++ )
+        begin
+          automatic int pkt_len           = $urandom_range( 2, MAX_PKT_LEN );
+          automatic int pause_probability = $urandom_range( 1, 99          );
+          generate_random_packet( temp_queue, pkt_len );
+          run_test( temp_queue, pause_probability ); 
+        end
     
       if( errors == 0 && tests_passed > 0 )
         $display( "test passed, all %0d tests passed", tests_passed );
