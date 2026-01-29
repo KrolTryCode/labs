@@ -20,9 +20,8 @@ module simple_dual_port_ram
 	
 	always_ff@(posedge clk)
 	begin
-		if(we) begin
+		if(we)
 			ram[waddr] <= wdata;
-	end
 		q <= ram[raddr];
 	end
 endmodule : simple_dual_port_ram

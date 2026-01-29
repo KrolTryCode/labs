@@ -1,6 +1,6 @@
 module top #(
-  parameter DWIDTH      = 3,
-  parameter MAX_PKT_LEN = 10
+  parameter DWIDTH      = 32,
+  parameter MAX_PKT_LEN = 1024
 )(
   input                     clk_i,
   input                     srst_i,
