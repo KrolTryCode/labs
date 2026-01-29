@@ -1,6 +1,6 @@
 vlib work
 
-vlog -sv avalon_st_tb_pkg.sv
+vlog -sv avalon_st_tb_pkg.sv avalon_st_if.sv
 vlog -sv avalon_st_sorter_tb.sv
 
 vlog -sv ../rtl/simple_dual_port_ram.sv
