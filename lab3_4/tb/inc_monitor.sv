@@ -5,14 +5,21 @@ class inc_monitor #(
 
   typedef inc_transaction #( DATA_WIDTH, ADDR_WIDTH ) tr_t;
 
-  virtual inc_if #( DATA_WIDTH, ADDR_WIDTH ) vif;
+  virtual inc_ctrl_if     #( ADDR_WIDTH              ) vif_ctrl;
+  virtual avalon_mm_wr_if #( ADDR_WIDTH, DATA_WIDTH  ) vif_wr;
+
   mailbox #( tr_t ) mbx;
 
   parameter int TIMEOUT_CYCLES = 500;
 
-  function new( virtual inc_if #( DATA_WIDTH, ADDR_WIDTH ) vif, mailbox #( tr_t ) mbx );
-    this.vif = vif;
-    this.mbx = mbx;
+  function new(
+    virtual inc_ctrl_if     #( ADDR_WIDTH             ) vif_ctrl,
+    virtual avalon_mm_wr_if #( ADDR_WIDTH, DATA_WIDTH ) vif_wr,
+    mailbox #( tr_t ) mbx
+  );
+    this.vif_ctrl = vif_ctrl;
+    this.vif_wr   = vif_wr;
+    this.mbx      = mbx;
   endfunction
 
   task run();
@@ -23,18 +30,18 @@ class inc_monitor #(
 
     forever 
       begin
-        @( posedge vif.clk_i iff vif.run_i === 1'b1 );
+        @( posedge vif_ctrl.clk_i iff vif_ctrl.run_i === 1'b1 );
 
         tr           = new();
-        tr.base_addr = vif.base_addr_i;
-        tr.length    = vif.length_i;
+        tr.base_addr = vif_ctrl.base_addr_i;
+        tr.length    = vif_ctrl.length_i;
         timed_out    = 0;
-
+        
         // wait for waitrequest_o=1, while dut start the task
         wait_cycles = 0;
-        while( vif.waitrequest_o !== 1'b1 ) 
+        while( vif_ctrl.waitrequest_o !== 1'b1 ) 
           begin
-            @( posedge vif.clk_i );
+            @( posedge vif_ctrl.clk_i );
             wait_cycles = wait_cycles + 1;
             if( wait_cycles > TIMEOUT_CYCLES ) 
               begin
@@ -50,18 +57,18 @@ class inc_monitor #(
             wait_cycles = 0;
             forever 
               begin
-                @( posedge vif.clk_i );
+                @( posedge vif_ctrl.clk_i );
 
-                if( vif.amm_wr_write === 1'b1 && vif.amm_wr_waitrequest === 1'b0 ) 
+                if( vif_wr.write === 1'b1 && vif_wr.waitrequest === 1'b0 ) 
                   begin
-                    beat.address = vif.amm_wr_address;
-                    beat.data    = vif.amm_wr_writedata;
-                    beat.be      = vif.amm_wr_byteenable;
+                    beat.address = vif_wr.address;
+                    beat.data    = vif_wr.writedata;
+                    beat.be      = vif_wr.byteenable;
                     tr.writes.push_back( beat );
                   end
 
                 // dut complete work
-                if( vif.waitrequest_o === 1'b0 ) break;
+                if( vif_ctrl.waitrequest_o === 1'b0 ) break;
 
                 wait_cycles = wait_cycles + 1;
                 if( wait_cycles > TIMEOUT_CYCLES ) 

@@ -6,14 +6,14 @@ class ast_conv_out_monitor #(
 
   typedef ast_conv_transaction #( DATA_IN_W, DATA_OUT_W, CHANNEL_W ) tr_t;
 
-  virtual ast_conv_if #( DATA_IN_W, DATA_OUT_W, CHANNEL_W ) vif;
+  virtual avalon_st_if #( .DATA_W( DATA_OUT_W ), .CHANNEL_W( CHANNEL_W ) ) out_vif;
   mailbox #( tr_t ) mon_mbx;
 
   function new(
-    virtual ast_conv_if #( DATA_IN_W, DATA_OUT_W, CHANNEL_W ) vif,
+    virtual avalon_st_if #( .DATA_W( DATA_OUT_W ), .CHANNEL_W( CHANNEL_W ) ) out_vif,
     mailbox #( tr_t ) mon_mbx
   );
-    this.vif     = vif;
+    this.out_vif = out_vif;
     this.mon_mbx = mon_mbx;
   endfunction
 
@@ -23,30 +23,30 @@ class ast_conv_out_monitor #(
     int  eop_cnt = 0;
     forever
       begin
-        @( posedge vif.clk_i );
+        @( posedge out_vif.clk_i );
 
-        if( vif.ast_startofpacket_o && !vif.ast_valid_o ) 
+        if( out_vif.startofpacket && !out_vif.valid )
           sop_cnt++;
-        if( vif.ast_endofpacket_o   && !vif.ast_valid_o )
+        if( out_vif.endofpacket   && !out_vif.valid )
           eop_cnt++;
 
-        if( !vif.ast_valid_o || !vif.ast_ready_i ) continue;
+        if( !out_vif.valid || !out_vif.ready ) continue;
 
-        if( vif.ast_startofpacket_o )
+        if( out_vif.startofpacket )
           begin
             pkt                   = new();
-            pkt.channel           = vif.ast_channel_o;
+            pkt.channel           = out_vif.channel;
             pkt.sop_without_valid = sop_cnt;
             pkt.eop_without_valid = eop_cnt;
             sop_cnt               = 0;
             eop_cnt               = 0;
           end
 
-        pkt.out_beats.push_back( vif.ast_data_o );
+        pkt.out_beats.push_back( out_vif.data );
 
-        if( vif.ast_endofpacket_o )
+        if( out_vif.endofpacket )
           begin
-            pkt.out_empty_last = vif.ast_empty_o;
+            pkt.out_empty_last = out_vif.empty;
             mon_mbx.put( pkt );
             pkt = new();
           end

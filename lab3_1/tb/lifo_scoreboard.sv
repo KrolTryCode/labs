@@ -23,9 +23,11 @@ class lifo_scoreboard #(
         mon_mbx.get( tr );
 
         case( tr.kind )
-          WRITE       : model.push_back( tr.data[0] );
-          READ        : do_read        ( tr         );
-          SIMULTANEOUS: do_simultaneous( tr         );
+          WRITE          : model.push_back( tr.data[0] );
+          READ           : do_read        ( tr         );
+          SIMULTANEOUS   : do_simultaneous( tr         );
+          SIMULT_ON_EMPTY: model.push_back( tr.data[0] );
+          SIMULT_ON_FULL : do_read        ( tr         );
           RESET  : ; 
           default: ;
         endcase

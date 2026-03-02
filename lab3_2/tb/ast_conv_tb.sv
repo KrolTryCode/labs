@@ -16,35 +16,37 @@ module ast_conv_tb;
   typedef ast_conv_transaction #( DATA_IN_W, DATA_OUT_W, CHANNEL_W ) tr_t;
 
   logic clk_i;
-  initial 
+  initial
     begin
       clk_i <= 1'b0;
       forever #( CLK_PERIOD / 2 ) clk_i = ~clk_i;
     end
 
-  ast_conv_if #( DATA_IN_W, DATA_OUT_W, CHANNEL_W ) conv_if ( .clk_i(clk_i) );
+  avalon_st_if    #( .DATA_W( DATA_IN_W  ), .CHANNEL_W( CHANNEL_W ) ) in_if   ( .clk_i( clk_i ) );
+  avalon_st_if    #( .DATA_W( DATA_OUT_W ), .CHANNEL_W( CHANNEL_W ) ) out_if  ( .clk_i( clk_i ) );
+  ast_conv_ctrl_if                                                    ctrl_if ();
 
   ast_width_extender #(
     .DATA_IN_W ( DATA_IN_W  ),
     .DATA_OUT_W( DATA_OUT_W ),
     .CHANNEL_W ( CHANNEL_W  )
   ) dut (
-    .clk_i               ( conv_if.clk_i                ),
-    .srst_i              ( conv_if.srst_i               ),
-    .ast_data_i          ( conv_if.ast_data_i           ),
-    .ast_startofpacket_i ( conv_if.ast_startofpacket_i  ),
-    .ast_endofpacket_i   ( conv_if.ast_endofpacket_i    ),
-    .ast_valid_i         ( conv_if.ast_valid_i          ),
-    .ast_empty_i         ( conv_if.ast_empty_i          ),
-    .ast_channel_i       ( conv_if.ast_channel_i        ),
-    .ast_ready_o         ( conv_if.ast_ready_o          ),
-    .ast_data_o          ( conv_if.ast_data_o           ),
-    .ast_startofpacket_o ( conv_if.ast_startofpacket_o  ),
-    .ast_endofpacket_o   ( conv_if.ast_endofpacket_o    ),
-    .ast_valid_o         ( conv_if.ast_valid_o          ),
-    .ast_empty_o         ( conv_if.ast_empty_o          ),
-    .ast_channel_o       ( conv_if.ast_channel_o        ),
-    .ast_ready_i         ( conv_if.ast_ready_i          )
+    .clk_i               ( clk_i                 ),
+    .srst_i              ( ctrl_if.srst_i        ),
+    .ast_data_i          ( in_if.data            ),
+    .ast_startofpacket_i ( in_if.startofpacket   ),
+    .ast_endofpacket_i   ( in_if.endofpacket     ),
+    .ast_valid_i         ( in_if.valid           ),
+    .ast_empty_i         ( in_if.empty           ),
+    .ast_channel_i       ( in_if.channel         ),
+    .ast_ready_o         ( in_if.ready           ),
+    .ast_data_o          ( out_if.data           ),
+    .ast_startofpacket_o ( out_if.startofpacket  ),
+    .ast_endofpacket_o   ( out_if.endofpacket    ),
+    .ast_valid_o         ( out_if.valid          ),
+    .ast_empty_o         ( out_if.empty          ),
+    .ast_channel_o       ( out_if.channel        ),
+    .ast_ready_i         ( out_if.ready          )
   );
 
   env_t env;
@@ -66,7 +68,7 @@ module ast_conv_tb;
           begin
             automatic int payload_idx = beat_idx * BYTES_IN + byte_idx;
             beat[ byte_idx * BITS_PER_BYTE +: BITS_PER_BYTE ] = ( payload_idx < num_bytes ) ? payload[payload_idx] :
-                                                                                                        8'b11111111;
+                                                                                               8'b11111111;
           end
         tr.beats.push_back( beat );
       end
@@ -78,36 +80,34 @@ module ast_conv_tb;
     $display( "test: %s", name );
     env.reset();
 
-    foreach ( pkts[i] ) 
+    foreach ( pkts[i] )
       env.send( pkts[i] );
 
     env.wait_done();
   endtask
 
-  task automatic run_single( 
-    string name, 
+  task automatic run_single(
+    string name,
     logic [7:0] payload[$],
-    logic [CHANNEL_W-1:0] channel = '0 
+    logic [CHANNEL_W-1:0] channel = '0
   );
     automatic tr_t pkts[$];
-
     pkts.push_back( make_pkt( payload, channel ) );
-
     run_test( name, pkts );
   endtask
 
   initial
     begin
-      conv_if.srst_i      = 0;
-      conv_if.ast_ready_i = 1;
+      ctrl_if.srst_i = 1'b0;
+      out_if.ready   = 1'b1;
 
-      env = new( conv_if );
+      env = new( in_if, out_if, ctrl_if );
       env.run();
 
       // TC1: N input beats --> 1 full output word, empty_out=0
       begin
         automatic logic [7:0] payload[$];
-        for ( int i = 0; i < BYTES_OUT; i++ ) 
+        for ( int i = 0; i < BYTES_OUT; i++ )
           payload.push_back( i );
 
         run_single( "TC1: full word (N beats, empty=0)", payload, 10'h1 );
@@ -133,7 +133,7 @@ module ast_conv_tb;
       // TC4: N+1 input beats --> 2 output words, second word has empty=24
       begin
         automatic logic [7:0] payload[$];
-        for ( int i = 0; i < BYTES_OUT + BYTES_IN; i++ )  
+        for ( int i = 0; i < BYTES_OUT + BYTES_IN; i++ )
           payload.push_back( i );
 
         run_single( "TC4: N+1 beats -> 2 out words", payload, 10'h4 );
@@ -142,7 +142,7 @@ module ast_conv_tb;
       // TC5: last input beat has 1 real byte (empty_in=7)
       begin
         automatic logic [7:0] payload[$];
-        for ( int i = 0; i < 3*BYTES_IN + 1; i++ ) 
+        for ( int i = 0; i < 3*BYTES_IN + 1; i++ )
           payload.push_back( i );
 
         run_single( "TC5: last beat has 1 real byte (empty_in=7)", payload, 10'h5 );
@@ -153,7 +153,7 @@ module ast_conv_tb;
         automatic tr_t        pkts[$];
         automatic logic [7:0] payload[$];
 
-        for( int i = 0; i < BYTES_OUT; i++ ) 
+        for( int i = 0; i < BYTES_OUT; i++ )
           payload.push_back( i );
 
         pkts.push_back( make_pkt( payload, 10'h000 ) );
@@ -171,7 +171,7 @@ module ast_conv_tb;
           begin
             payload.delete();
 
-            for( int j = 0; j < BYTES_OUT; j++ ) 
+            for( int j = 0; j < BYTES_OUT; j++ )
               payload.push_back( i*BYTES_OUT + j );
 
             pkts.push_back( make_pkt( payload, 10'(i) ) );
@@ -184,7 +184,7 @@ module ast_conv_tb;
         begin
           automatic logic [7:0] payload[$];
 
-          for( int i = 0; i < num_bytes; i++ ) 
+          for( int i = 0; i < num_bytes; i++ )
             payload.push_back( i );
 
           run_single( $sformatf( "TC8.%0d: %0d byte(s)", num_bytes, num_bytes ), payload );
@@ -195,7 +195,7 @@ module ast_conv_tb;
         begin
           automatic logic [7:0] payload[$];
 
-          for( int j = 0; j < BYTES_OUT; j++ ) 
+          for( int j = 0; j < BYTES_OUT; j++ )
             payload.push_back( i*BYTES_OUT + j );
 
           env.in_drv.back_pressure_prob = 50;

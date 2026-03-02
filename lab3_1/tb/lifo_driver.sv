@@ -32,11 +32,14 @@ class lifo_driver #(
         drv_mbx.get( tr );
         busy = 1;
         case( tr.kind )
-          WRITE:        drive_write       ( tr.data[0]                    );
-          READ:         drive_read        (                               );
-          WRITE_BURST:  drive_write_burst ( tr.data,        tr.pause_prob );
-          READ_BURST:   drive_read_burst  ( tr.data.size(), tr.pause_prob );
-          SIMULTANEOUS: drive_simultaneous( tr.data[0]                    );
+          WRITE:           drive_write                 ( tr.data[0]                    );
+          READ:            drive_read                  (                               );
+          WRITE_BURST:     drive_write_burst           ( tr.data,        tr.pause_prob );
+          READ_BURST:      drive_read_burst            ( tr.data.size(), tr.pause_prob );
+          SIMULTANEOUS:    drive_simultaneous          ( tr.data[0]                    );
+          WRITE_READ_ALT:  drive_write_read_alt        ( tr.data,        tr.pause_prob );
+          SIMULT_ON_EMPTY: drive_simultaneous          ( tr.data[0]                    );
+          SIMULT_ON_FULL:  drive_simultaneous          ( tr.data[0]                    );
         endcase
 
         busy = 0;
@@ -114,4 +117,41 @@ class lifo_driver #(
     vif.cb.data_i  <=  '0;
   endtask
 
+  local task drive_write_read_alt( logic [DWIDTH-1:0] data[$], int pause_prob );
+    int n = data.size();
+
+    @( vif.cb );
+    vif.cb.wrreq_i <= 1'b1;
+    vif.cb.data_i <= data[0];
+
+    for( int i = 0; i < n; i++ )
+      begin
+        @( vif.cb );
+        if( i + 1 < n )
+          begin
+             if( pause_prob > 0 && $urandom_range(0,99) < pause_prob )
+              begin
+                vif.cb.wrreq_i <= 1'b0;
+                @( vif.cb );
+                vif.cb.wrreq_i <= 1'b1;
+              end
+            vif.cb.data_i <= data[i+1];
+          end
+      end
+
+    vif.cb.wrreq_i <= 1'b0;
+    vif.cb.data_i  <=  '0;
+    vif.cb.rdreq_i <= 1'b1;
+    for( int i = 0; i < n; i++ )
+      begin
+        @( vif.cb );
+        if( i + 1 < n && pause_prob > 0 && $urandom_range(0,99) < pause_prob )
+          begin
+            vif.cb.rdreq_i <= 1'b0;
+            @( vif.cb );
+            vif.cb.rdreq_i <= 1'b1;
+          end
+      end
+    vif.cb.rdreq_i <= 1'b0;
+  endtask
 endclass

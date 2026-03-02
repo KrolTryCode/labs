@@ -17,16 +17,20 @@ class ast_conv_env #(
   out_mon_t out_mon;
   scb_t     scb;
 
-  local virtual ast_conv_if #( DATA_IN_W, DATA_OUT_W, CHANNEL_W ) vif_ref;
+  local virtual avalon_st_if #( .DATA_W( DATA_IN_W ), .CHANNEL_W( CHANNEL_W ) ) in_vif_ref;
   local int packets_expected;
 
-  function new( virtual ast_conv_if #( DATA_IN_W, DATA_OUT_W, CHANNEL_W ) vif );
-    drv_mbx          = new(); 
+  function new(
+    virtual avalon_st_if    #( .DATA_W(DATA_IN_W  ), .CHANNEL_W( CHANNEL_W ) ) in_vif,
+    virtual avalon_st_if    #( .DATA_W(DATA_OUT_W ), .CHANNEL_W( CHANNEL_W ) ) out_vif,
+    virtual ast_conv_ctrl_if                                                   ctrl_vif
+  );
+    drv_mbx          = new();
     in_mbx           = new();
     out_mbx          = new();
-    vif_ref          = vif;
-    in_drv           = new( vif, drv_mbx, in_mbx );
-    out_mon          = new( vif, out_mbx );
+    in_vif_ref       = in_vif;
+    in_drv           = new( in_vif, out_vif, ctrl_vif, drv_mbx, in_mbx );
+    out_mon          = new( out_vif, out_mbx );
     scb              = new( in_mbx, out_mbx );
     packets_expected = 0;
   endfunction
@@ -53,7 +57,7 @@ class ast_conv_env #(
     scb.reset_counters();
     packets_expected = 0;
   endtask
-  
+
   task send( tr_t tr );
     drv_mbx.put( tr );
     packets_expected++;
@@ -64,7 +68,7 @@ class ast_conv_env #(
     wait( drv_mbx.num() == 0 && in_drv.busy == 0 );
     while( scb.packets_checked < packets_expected && cnt < timeout )
       begin
-        @( vif_ref.cb_in );
+        @( posedge in_vif_ref.clk_i );
         cnt++;
       end
     if( cnt >= timeout )
@@ -72,10 +76,11 @@ class ast_conv_env #(
         $display( "[env] timeout: waited for %0d packets", packets_expected );
         scb.add_errors( packets_expected - scb.packets_checked );
       end
-    repeat(2) @( vif_ref.cb_in );
+    repeat( 2 ) @( posedge in_vif_ref.clk_i );
   endtask
 
   function void report();
     scb.print_report();
   endfunction
+
 endclass

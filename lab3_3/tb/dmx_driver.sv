@@ -8,35 +8,41 @@ class dmx_driver #(
 
   typedef dmx_transaction #( DATA_WIDTH, EMPTY_WIDTH, CHANNEL_WIDTH, TX_DIR, DIR_SEL_WIDTH ) tr_t;
 
-  virtual dmx_if #( DATA_WIDTH, EMPTY_WIDTH, CHANNEL_WIDTH, TX_DIR, DIR_SEL_WIDTH ).driver vif;
+  virtual avalon_st_if #( DATA_WIDTH, CHANNEL_WIDTH ).source vif_in;
+  virtual avalon_st_if #( DATA_WIDTH, CHANNEL_WIDTH ).sink   vif_out [TX_DIR];
+  virtual dmx_ctrl_if  #( TX_DIR, DIR_SEL_WIDTH     )        vif_ctrl;
 
   mailbox #( tr_t ) drv_mbx;
   bit busy;
 
   function new(
-    virtual dmx_if #( DATA_WIDTH, EMPTY_WIDTH, CHANNEL_WIDTH, TX_DIR, DIR_SEL_WIDTH ).driver vif,
+    virtual avalon_st_if #( DATA_WIDTH, CHANNEL_WIDTH ).source vif_in,
+    virtual avalon_st_if #( DATA_WIDTH, CHANNEL_WIDTH ).sink   vif_out [TX_DIR],
+    virtual dmx_ctrl_if  #( TX_DIR, DIR_SEL_WIDTH     )        vif_ctrl,
     mailbox #( tr_t ) drv_mbx
   );
-    this.vif     = vif;
-    this.drv_mbx = drv_mbx;
+    this.vif_in   = vif_in;
+    this.vif_out  = vif_out;
+    this.vif_ctrl = vif_ctrl;
+    this.drv_mbx  = drv_mbx;
   endfunction
 
   task reset();
-    vif.srst_i                     <= 1'b1;
-    vif.drv_cb.ast_valid_i         <= 1'b0;
-    vif.drv_cb.ast_startofpacket_i <= 1'b0;
-    vif.drv_cb.ast_endofpacket_i   <= 1'b0;
-    vif.drv_cb.ast_data_i          <=  '0;
-    vif.drv_cb.ast_empty_i         <=  '0;
-    vif.drv_cb.ast_channel_i       <=  '0;
-    vif.drv_cb.dir_i               <=  '0;
+    vif_ctrl.srst_i                  <= 1'b1;
+    vif_in.src_cb.valid              <= 1'b0;
+    vif_in.src_cb.startofpacket      <= 1'b0;
+    vif_in.src_cb.endofpacket        <= 1'b0;
+    vif_in.src_cb.data               <=  '0;
+    vif_in.src_cb.empty              <=  '0;
+    vif_in.src_cb.channel            <=  '0;
+    vif_ctrl.dir_i                   <=  '0;
 
     for( int port = 0; port < TX_DIR; port++ )
-      vif.drv_cb.ast_ready_i[port] <= 1'b1;
+      vif_out[port].snk_cb.ready <= 1'b1;
 
-    @( posedge vif.clk_i );
-    vif.srst_i <= 1'b0;
-    @( posedge vif.clk_i );
+    @( posedge vif_in.clk_i );
+    vif_ctrl.srst_i <= 1'b0;
+    @( posedge vif_in.clk_i );
   endtask
 
   task run();
@@ -62,50 +68,50 @@ class dmx_driver #(
     disable ready_block;
 
     for( int port = 0; port < TX_DIR; port++ )
-      vif.drv_cb.ast_ready_i[port] <= 1'b1;
+      vif_out[port].snk_cb.ready <= 1'b1;
   endtask
 
   local task drive_upstream( tr_t transaction );
     int beat_count = transaction.data.size();
 
-    @( vif.drv_cb );
-    vif.drv_cb.dir_i <= transaction.dir;
+    @( vif_in.src_cb );
+    vif_ctrl.dir_i <= transaction.dir;
 
     for( int beat = 0; beat < beat_count; beat++ ) 
       begin
         if( beat > 0 && transaction.src_pause_prob > 0 && $urandom_range( 0, 99 ) < transaction.src_pause_prob ) 
           begin
-            @( vif.drv_cb );
-            vif.drv_cb.ast_valid_i <= 1'b0;
+            @( vif_in.src_cb );
+            vif_in.src_cb.valid <= 1'b0;
           end
 
-        @( vif.drv_cb );
-        vif.drv_cb.ast_valid_i         <= 1'b1;
-        vif.drv_cb.ast_data_i          <= transaction.data[beat];
-        vif.drv_cb.ast_channel_i       <= transaction.channel[beat];
-        vif.drv_cb.ast_empty_i         <= transaction.empty[beat];
-        vif.drv_cb.ast_startofpacket_i <= ( beat == 0              ) ? 1'b1 : 1'b0;
-        vif.drv_cb.ast_endofpacket_i   <= ( beat == beat_count - 1 ) ? 1'b1 : 1'b0;
+        @( vif_in.src_cb );
+        vif_in.src_cb.valid         <= 1'b1;
+        vif_in.src_cb.data          <= transaction.data[beat];
+        vif_in.src_cb.channel       <= transaction.channel[beat];
+        vif_in.src_cb.empty         <= transaction.empty[beat];
+        vif_in.src_cb.startofpacket <= ( beat == 0              ) ? 1'b1 : 1'b0;
+        vif_in.src_cb.endofpacket   <= ( beat == beat_count - 1 ) ? 1'b1 : 1'b0;
 
-        @( posedge vif.clk_i );
+        @( posedge vif_in.clk_i );
 
-        while( vif.ast_ready_o !== 1'b1 )
-          @( posedge vif.clk_i );
+        while( vif_in.ready !== 1'b1 )
+          @( posedge vif_in.clk_i );
       end
 
-    @( vif.drv_cb );
-    vif.drv_cb.ast_valid_i         <= 1'b0;
-    vif.drv_cb.ast_startofpacket_i <= 1'b0;
-    vif.drv_cb.ast_endofpacket_i   <= 1'b0;
-    vif.drv_cb.ast_data_i          <=  '0;
+    @( vif_in.src_cb );
+    vif_in.src_cb.valid         <= 1'b0;
+    vif_in.src_cb.startofpacket <= 1'b0;
+    vif_in.src_cb.endofpacket   <= 1'b0;
+    vif_in.src_cb.data          <=  '0;
   endtask
 
   local task drive_ready( int pause_prob );
     forever 
       begin
-        @( vif.drv_cb );
+        @( vif_in.src_cb );
         for( int port = 0; port < TX_DIR; port++ )
-          vif.drv_cb.ast_ready_i[port] <= ( pause_prob > 0 && $urandom_range( 0, 99 ) < pause_prob ) ? 1'b0 : 1'b1;
+          vif_out[port].snk_cb.ready <= ( pause_prob > 0 && $urandom_range( 0, 99 ) < pause_prob ) ? 1'b0 : 1'b1;
       end
   endtask
 

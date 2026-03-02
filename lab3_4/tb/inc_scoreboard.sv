@@ -60,7 +60,7 @@ class inc_scoreboard #(
     bytes_left = ref_tr.length;
     word_addr  = ref_tr.base_addr;
 
-    $display( "[%0t] [scb] === check %0d  base=%0x  length=%0d  writes=%0d (exp %0d)%s",
+    $display( "[%0t] [scb] check %0d  base=%0x  length=%0d  writes=%0d (exp %0d)%s",
       $time, received, ref_tr.base_addr, ref_tr.length, mon_tr.writes.size(), num_words,
       is_truncated ? " truncated at max addr" : "" );
 

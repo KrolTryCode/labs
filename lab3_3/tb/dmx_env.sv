@@ -17,17 +17,32 @@ class dmx_env #(
 
   dmx_scoreboard #( DATA_WIDTH, EMPTY_WIDTH, CHANNEL_WIDTH, TX_DIR, DIR_SEL_WIDTH ) scb;
 
-  function new( virtual dmx_if #( DATA_WIDTH, EMPTY_WIDTH, CHANNEL_WIDTH, TX_DIR, DIR_SEL_WIDTH ) vif );
+  function new(
+    virtual avalon_st_if #( DATA_WIDTH, CHANNEL_WIDTH ).source  vif_in,
+    virtual avalon_st_if #( DATA_WIDTH, CHANNEL_WIDTH )         vif_out [TX_DIR],
+    virtual dmx_ctrl_if  #( TX_DIR, DIR_SEL_WIDTH )             vif_ctrl
+  );
+    virtual avalon_st_if #( DATA_WIDTH, CHANNEL_WIDTH ).sink    vif_drv [TX_DIR];
+    virtual avalon_st_if #( DATA_WIDTH, CHANNEL_WIDTH ).monitor vif_mon [TX_DIR];
 
-    virtual dmx_if #( DATA_WIDTH, EMPTY_WIDTH, CHANNEL_WIDTH, TX_DIR, DIR_SEL_WIDTH ).driver  vif_drv = vif;
-    virtual dmx_if #( DATA_WIDTH, EMPTY_WIDTH, CHANNEL_WIDTH, TX_DIR, DIR_SEL_WIDTH ).monitor vif_mon = vif;
+    vif_drv[0] = vif_out[0];
+    vif_mon[0] = vif_out[0];
+    
+    vif_drv[1] = vif_out[1];
+    vif_mon[1] = vif_out[1];
+
+    vif_drv[2] = vif_out[2];
+    vif_mon[2] = vif_out[2];
+
+    vif_drv[3] = vif_out[3];
+    vif_mon[3] = vif_out[3];
 
     drv_mbx = new();
     mon_mbx = new();
 
-    drv = new( vif_drv, drv_mbx );
-    mon = new( vif_mon, mon_mbx );
-    scb = new( mon_mbx          );
+    drv = new( vif_in, vif_drv, vif_ctrl, drv_mbx );
+    mon = new( vif_mon, mon_mbx                   );
+    scb = new( mon_mbx                            );
   endfunction
 
   task run();

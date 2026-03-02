@@ -2,7 +2,7 @@ module mem_model #(
   parameter int DATA_WIDTH = 64,
   parameter int ADDR_WIDTH = 10,
   parameter int MIN_LAT    = 1,
-  parameter int MAX_LAT    = 8,
+  parameter int MAX_LAT    = 64,
   parameter int MAX_WAIT   = 3
 )(
   input logic clk_i,

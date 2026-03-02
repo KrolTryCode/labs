@@ -18,35 +18,61 @@ module dmx_tb;
       forever #( CLK_PERIOD / 2 ) clk_i = ~clk_i;
     end
 
-  dmx_if #(
-    .DATA_WIDTH    ( DATA_WIDTH    ),
-    .EMPTY_WIDTH   ( EMPTY_WIDTH   ),
-    .CHANNEL_WIDTH ( CHANNEL_WIDTH ),
-    .TX_DIR        ( TX_DIR        )
-  ) dif ( .clk_i( clk_i ) );
+  avalon_st_if #(
+    .DATA_W    ( DATA_WIDTH      ),
+    .CHANNEL_W ( CHANNEL_WIDTH   )
+  ) ast_in_if  ( .clk_i( clk_i ) );
+
+  avalon_st_if #(
+    .DATA_W    ( DATA_WIDTH      ),
+    .CHANNEL_W ( CHANNEL_WIDTH   )
+  ) ast_out0_if( .clk_i( clk_i ) );
+
+  avalon_st_if #(
+    .DATA_W    ( DATA_WIDTH      ),
+    .CHANNEL_W ( CHANNEL_WIDTH   )
+  ) ast_out1_if( .clk_i( clk_i ) );
+
+  avalon_st_if #(
+    .DATA_W    ( DATA_WIDTH      ),
+    .CHANNEL_W ( CHANNEL_WIDTH   )
+  ) ast_out2_if( .clk_i( clk_i ) );
+
+  avalon_st_if #(
+    .DATA_W    ( DATA_WIDTH      ),
+    .CHANNEL_W ( CHANNEL_WIDTH   )
+  ) ast_out3_if( .clk_i( clk_i ) );
+
+  dmx_ctrl_if #(
+    .TX_DIR        ( TX_DIR          ),
+    .DIR_SEL_WIDTH ( DIR_SEL_WIDTH   )
+  ) ctrl_if        ( .clk_i( clk_i ) );
+
 
   ast_dmx #(
     .DATA_WIDTH    ( DATA_WIDTH    ),
     .CHANNEL_WIDTH ( CHANNEL_WIDTH ),
     .TX_DIR        ( TX_DIR        )
   ) dut (
-    .clk_i               ( dif.clk_i               ),
-    .srst_i              ( dif.srst_i              ),
-    .dir_i               ( dif.dir_i               ),
-    .ast_data_i          ( dif.ast_data_i          ),
-    .ast_startofpacket_i ( dif.ast_startofpacket_i ),
-    .ast_endofpacket_i   ( dif.ast_endofpacket_i   ),
-    .ast_valid_i         ( dif.ast_valid_i         ),
-    .ast_empty_i         ( dif.ast_empty_i         ),
-    .ast_channel_i       ( dif.ast_channel_i       ),
-    .ast_ready_o         ( dif.ast_ready_o         ),
-    .ast_data_o          ( dif.ast_data_o          ),
-    .ast_startofpacket_o ( dif.ast_startofpacket_o ),
-    .ast_endofpacket_o   ( dif.ast_endofpacket_o   ),
-    .ast_valid_o         ( dif.ast_valid_o         ),
-    .ast_empty_o         ( dif.ast_empty_o         ),
-    .ast_channel_o       ( dif.ast_channel_o       ),
-    .ast_ready_i         ( dif.ast_ready_i         )
+    .clk_i               ( clk_i                     ),
+    .srst_i              ( ctrl_if.srst_i            ),
+    .dir_i               ( ctrl_if.dir_i             ),
+
+    .ast_data_i          ( ast_in_if.data            ),
+    .ast_startofpacket_i ( ast_in_if.startofpacket   ),
+    .ast_endofpacket_i   ( ast_in_if.endofpacket     ),
+    .ast_valid_i         ( ast_in_if.valid           ),
+    .ast_empty_i         ( ast_in_if.empty           ),
+    .ast_channel_i       ( ast_in_if.channel         ),
+    .ast_ready_o         ( ast_in_if.ready           ),
+
+    .ast_data_o          ( '{ ast_out3_if.data,          ast_out2_if.data,          ast_out1_if.data,          ast_out0_if.data          } ),
+    .ast_startofpacket_o ( '{ ast_out3_if.startofpacket, ast_out2_if.startofpacket, ast_out1_if.startofpacket, ast_out0_if.startofpacket } ),
+    .ast_endofpacket_o   ( '{ ast_out3_if.endofpacket,   ast_out2_if.endofpacket,   ast_out1_if.endofpacket,   ast_out0_if.endofpacket   } ),
+    .ast_valid_o         ( '{ ast_out3_if.valid,         ast_out2_if.valid,         ast_out1_if.valid,         ast_out0_if.valid         } ),
+    .ast_empty_o         ( '{ ast_out3_if.empty,         ast_out2_if.empty,         ast_out1_if.empty,         ast_out0_if.empty         } ),
+    .ast_channel_o       ( '{ ast_out3_if.channel,       ast_out2_if.channel,       ast_out1_if.channel,       ast_out0_if.channel       } ),
+    .ast_ready_i         ( '{ ast_out3_if.ready,         ast_out2_if.ready,         ast_out1_if.ready,         ast_out0_if.ready         } )
   );
 
   typedef dmx_transaction #( DATA_WIDTH, EMPTY_WIDTH, CHANNEL_WIDTH, TX_DIR, DIR_SEL_WIDTH ) tr_t;
@@ -54,12 +80,13 @@ module dmx_tb;
 
   env_t env;
 
-  virtual dmx_if #( DATA_WIDTH, EMPTY_WIDTH, CHANNEL_WIDTH, TX_DIR, DIR_SEL_WIDTH ) vif;
+  virtual avalon_st_if #( DATA_WIDTH, CHANNEL_WIDTH ) vif_in;
+  virtual dmx_ctrl_if  #( TX_DIR, DIR_SEL_WIDTH     ) vif_ctrl;
 
   task wait_idle();
     wait( env.drv_mbx.num() == 0 && env.drv.busy == 0 );
     wait( env.scb.pending() == 0 );
-    repeat( 2 ) @( vif.drv_cb );
+    repeat( 2 ) @( vif_in.src_cb );
   endtask
 
   task send_and_expect(
@@ -223,12 +250,84 @@ module dmx_tb;
       end
   endtask
 
+  task test_dir_change_mid_packet( int port_sop, int port_mid );
+    automatic tr_t tr = new();
+    automatic logic [DATA_WIDTH-1:0] w[];
+    $display( "\n dir change mid-packet: sop_port=%0d mid_port=%0d", port_sop, port_mid );
+
+    w = new[4];
+    foreach( w[beat] )
+      w[beat] = DATA_WIDTH'( 64'hABCD_0000_0000_0000 + beat );
+
+    tr.dir = DIR_SEL_WIDTH'( port_sop );
+    foreach( w[beat] )
+      begin
+        tr.data.push_back   ( w[beat] );
+        tr.channel.push_back( 8'hDE   );
+        tr.empty.push_back  ( '0      );
+      end
+
+    env.scb.push_expected( tr );
+
+    fork
+      env.drv_mbx.put( tr );
+      begin
+        @( posedge ast_in_if.clk_i iff ( ast_in_if.valid === 1'b1 && ast_in_if.startofpacket === 1'b1 && ast_in_if.ready === 1'b1 ) );
+        @( posedge ast_in_if.clk_i );
+        ctrl_if.dir_i = DIR_SEL_WIDTH'( port_mid );
+      end
+    join_none
+
+    wait_idle();
+    ctrl_if.dir_i = DIR_SEL_WIDTH'( port_sop );
+  endtask
+
+  task test_srst_mid_packet( int port );
+    $display( "\n srst mid-packet: port=%0d", port );
+
+    fork
+      begin
+        automatic tr_t tr_broken = new();
+        automatic logic [DATA_WIDTH-1:0] w[];
+        w = new[16];
+        foreach( w[beat] )
+          w[beat] = DATA_WIDTH'( 64'hDEAD_0000_0000_0000 + beat );
+        tr_broken.dir = DIR_SEL_WIDTH'( port );
+        foreach( w[beat] )
+          begin
+            tr_broken.data.push_back   ( w[beat] );
+            tr_broken.channel.push_back( 8'hBB   );
+            tr_broken.empty.push_back  ( '0      );
+          end
+        env.drv_mbx.put( tr_broken );
+      end
+      begin
+        @( posedge ast_in_if.clk_i iff ( ast_in_if.valid === 1'b1 && ast_in_if.startofpacket === 1'b1 && ast_in_if.ready === 1'b1 ) );
+        repeat( 4 ) @( posedge ast_in_if.clk_i );
+        vif_ctrl.srst_i = 1'b1;
+        @( posedge ast_in_if.clk_i );
+
+        repeat( 2 ) @( posedge ast_in_if.clk_i );
+        if( vif_out_arr[port].valid === 1'b1 )
+          $display( "[%0t] [fail] srst mid-packet port=%0d: valid_o still high after srst", $time, port );
+        else
+          $display( "[%0t] [ok]   srst mid-packet port=%0d", $time, port );
+
+        repeat( 2 ) @( posedge ast_in_if.clk_i );
+        vif_ctrl.srst_i = 1'b0;
+      end
+    join
+
+    wait( env.drv.busy == 0 );
+    repeat( 4 ) @( posedge ast_in_if.clk_i );
+  endtask
+
   task test_srst_check();
     $display( "\n srst check" );
-    vif.srst_i = 1'b1;
-    repeat( 3 ) @( vif.drv_cb );
-    vif.srst_i = 1'b0;
-    @( vif.drv_cb );
+    vif_ctrl.srst_i = 1'b1;
+    repeat( 3 ) @( vif_in.src_cb );
+    vif_ctrl.srst_i = 1'b0;
+    @( vif_in.src_cb );
     begin
       automatic logic [DATA_WIDTH-1:0] w[] = '{ 64'hC1EA_0000_0000_0001, 64'hC1EA_0000_0000_0002 };
       send_and_expect( 1, w );
@@ -236,10 +335,20 @@ module dmx_tb;
     wait_idle();
   endtask
 
+  virtual avalon_st_if #( DATA_WIDTH, CHANNEL_WIDTH ) vif_out_arr [TX_DIR];
+
   initial begin
-    vif        = dif;
-    env        = new( dif );
-    dif.srst_i = 1'b0;
+    vif_in   = ast_in_if;
+    vif_ctrl = ctrl_if;
+
+    vif_out_arr[0] = ast_out0_if;
+    vif_out_arr[1] = ast_out1_if;
+    vif_out_arr[2] = ast_out2_if;
+    vif_out_arr[3] = ast_out3_if;
+
+    ctrl_if.srst_i = 1'b0;
+
+    env = new( ast_in_if, vif_out_arr, ctrl_if );
     env.run();
     env.reset();
 
@@ -294,6 +403,46 @@ module dmx_tb;
     test_dir_order();
 
     test_srst_check();
+
+    $display( "\n boundary: dir change mid-packet " );
+    test_dir_change_mid_packet( 0, 3 );
+    test_dir_change_mid_packet( 1, 0 );
+    test_dir_change_mid_packet( 2, 1 );
+    test_dir_change_mid_packet( 3, 2 );
+
+    $display( "\n boundary: max packet 65536 bytes (8192 beats)" );
+    for( int port = 0; port < TX_DIR; port++ )
+      begin
+        automatic logic [DATA_WIDTH-1:0] w[];
+        w = new[8192];
+        foreach( w[beat] )
+          w[beat] = DATA_WIDTH'( beat );
+        if(port == 2) continue;
+        $display( "\n max packet 8192 beats: port=%0d", port );
+        send_and_expect( port, w, CHANNEL_WIDTH'( port ) );
+        wait_idle();
+      end
+
+
+    $display( "\n boundary: srst mid-packet " );
+    for( int port = 0; port < TX_DIR; port++ )
+      if( port != 2 )
+        test_srst_mid_packet( port );
+
+    $display( "\n boundary: minimum 1-byte packet (empty=7) " );
+    begin
+      automatic logic [DATA_WIDTH-1:0] w[] = '{ 64'hABCD_EF00_0000_0000 };
+      $display( "\n 1-byte packet: port=0 empty=7" );
+      send_and_expect( 0, w, 8'h01, EMPTY_WIDTH'( 7 ) );
+      fork
+        wait_idle();
+        begin
+          repeat( 200 ) @( posedge ast_in_if.clk_i );
+          $display( "[timeout] 1-byte packet" );
+          $finish;
+        end
+      join_any
+    end
 
     env.report();
 

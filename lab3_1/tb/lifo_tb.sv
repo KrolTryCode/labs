@@ -79,7 +79,27 @@ module lifo_tb;
     env.drv_mbx.put( tr );
   endtask
 
+  task send_write_read_alt( logic [DWIDTH-1:0] data[$], int pause_prob = 0 );
+    automatic tr_t tr = new( WRITE_READ_ALT );
+    tr.data           = data;
+    tr.pause_prob     = pause_prob;
+    env.drv_mbx.put( tr );
+  endtask
+
+  task send_simultaneous_on_empty( logic [DWIDTH-1:0] data );
+    automatic tr_t tr = new( SIMULT_ON_EMPTY );
+    tr.data.push_back( data );
+    env.drv_mbx.put( tr );
+  endtask
+
+   task send_simultaneous_on_full( logic [DWIDTH-1:0] data );
+    automatic tr_t tr = new( SIMULT_ON_FULL );
+    tr.data.push_back( data );
+    env.drv_mbx.put( tr );
+  endtask
+
   task wait_idle();
+    @( posedge clk_i );
     wait( env.drv_mbx.num() == 0 && env.drv.busy == 0 );
     repeat ( 2 ) @( posedge clk_i );
   endtask
@@ -167,6 +187,77 @@ module lifo_tb;
     wait_idle();
   endtask
 
+  task run_test_wr_rd_continuous( logic [DWIDTH-1:0] data[$], int pause_prob = 0 );
+    $display( "run wr/rd continuous test" );
+    env.reset();
+    send_write_read_alt( data, pause_prob );
+    wait_idle();
+  endtask
+
+  task run_test_fill_drain_continuous();
+    automatic logic [DWIDTH-1:0] data[$];
+    $display( "run fill/drain continuous test" );
+    env.reset();
+
+    data.delete();
+    for( int i = 0; i < 2**AWIDTH; i++ )
+      data.push_back( 16'( i ) );
+
+    send_write_read_alt( data, 0 );
+    wait_idle();
+  endtask
+
+  task run_test_drain_fill_continuous();
+    automatic logic [DWIDTH-1:0] fill[$];
+    automatic logic [DWIDTH-1:0] drain_fill[$];
+    $display( "run drain/fill continuous test" );
+    env.reset();
+
+    // pre-fill
+    fill.delete();
+    for( int i = 0; i < 10; i++ )
+      fill.push_back( 16'( i + 1 ) );
+    send_write_burst( fill, 0 );
+    wait_idle();
+
+    send_read_burst( fill.size(), 0 );
+    begin
+      automatic logic [DWIDTH-1:0] new_data[$];
+      for( int i = 0; i < 10; i++ )
+        new_data.push_back( 16'( 16'hF000 + i ) );
+      send_write_burst( new_data, 0 );
+    end
+
+    send_read_burst( 10, 0 );
+    wait_idle();
+  endtask
+
+  task run_test_simult_on_empty();
+    $display( "run simult on empty test" );
+    env.reset();
+
+    repeat( 5 ) send_simultaneous_on_empty( 16'( $urandom() ) );
+    wait_idle();
+
+    send_read_burst( 5, 0 );
+    wait_idle();
+  endtask
+
+  task run_test_simult_on_full();
+    $display( "run simult on full test" );
+    env.reset();
+
+    for( int i = 0; i < 2**AWIDTH; i++ )
+      send_write( 16'( i ) );
+    wait_idle();
+
+    repeat( 5 ) send_simultaneous_on_full( 16'hDEAD );
+    wait_idle();
+
+    send_read_burst( 2**AWIDTH - 5, 0 );
+    wait_idle();
+  endtask
+
   initial 
     begin
       logic [DWIDTH-1:0] q[$];
@@ -220,6 +311,27 @@ module lifo_tb;
       run_test_underflow();
 
       run_test_simultaneous();
+
+      // write->read with no gap between phases
+      q = '{ 1, 2, 3, 4, 5 };
+      run_test_wr_rd_continuous( q );
+
+      q = '{ 16'hDEAD, 16'hBEEF, 16'hCAFE, 16'hBABE };
+      run_test_wr_rd_continuous( q );
+
+      // write->read with random pauses inside each phase, but not between phases
+      q = '{ 10, 9, 8, 7, 6, 5, 4, 3, 2, 1 };
+      run_test_wr_rd_continuous( q, 30 );
+
+      // fill entire stack then immediately drain
+      run_test_fill_drain_continuous();
+
+      // drain then immediately re-fill
+      run_test_drain_fill_continuous();
+
+      run_test_simult_on_empty();
+
+      run_test_simult_on_full();
 
 
       // as u wish, commented out for repeatability

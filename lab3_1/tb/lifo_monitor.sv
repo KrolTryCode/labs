@@ -39,7 +39,16 @@ class lifo_monitor #(
           automatic kind_e  kind;
 
           case( { vif.wrreq_i, vif.rdreq_i } )
-            2'b11:   kind = SIMULTANEOUS;
+            2'b11:   
+              begin
+                if( vif.cb.empty_o )
+                  kind = SIMULT_ON_EMPTY;
+                else 
+                  if( vif.cb.full_o )
+                    kind = SIMULT_ON_FULL;
+                  else
+                    kind = SIMULTANEOUS;
+              end
             2'b10:   kind = WRITE;
             2'b01:   kind = READ;
             default: kind = READ;

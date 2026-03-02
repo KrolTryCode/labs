@@ -8,15 +8,15 @@ class dmx_monitor #(
 
   typedef dmx_transaction #( DATA_WIDTH, EMPTY_WIDTH, CHANNEL_WIDTH, TX_DIR, DIR_SEL_WIDTH ) tr_t;
 
-  virtual dmx_if #( DATA_WIDTH, EMPTY_WIDTH, CHANNEL_WIDTH, TX_DIR, DIR_SEL_WIDTH ).monitor vif;
+  virtual avalon_st_if #( DATA_WIDTH, CHANNEL_WIDTH ).monitor vif_out [TX_DIR];
 
   mailbox #( tr_t ) mon_mbx;
 
   function new(
-    virtual dmx_if #( DATA_WIDTH, EMPTY_WIDTH, CHANNEL_WIDTH, TX_DIR, DIR_SEL_WIDTH ).monitor vif,
+    virtual avalon_st_if #( DATA_WIDTH, CHANNEL_WIDTH ).monitor vif_out [TX_DIR],
     mailbox #( tr_t ) mon_mbx
   );
-    this.vif     = vif;
+    this.vif_out = vif_out;
     this.mon_mbx = mon_mbx;
   endfunction
 
@@ -37,13 +37,13 @@ class dmx_monitor #(
 
     forever 
       begin
-        @( vif.mon_cb );
+        @( vif_out[port].mon_cb );
 
-        if( vif.mon_cb.ast_valid_o[port] && vif.mon_cb.ast_ready_i[port] ) 
+        if( vif_out[port].mon_cb.valid && vif_out[port].mon_cb.ready ) 
           begin
             if( !in_packet ) 
               begin
-                if( !vif.mon_cb.ast_startofpacket_o[port] ) continue;
+                if( !vif_out[port].mon_cb.startofpacket ) continue;
                 current          = new();
                 in_packet        = 1;
                 beat_idx         = 0;
@@ -51,11 +51,11 @@ class dmx_monitor #(
                 current.sop_beat = 0;
               end
 
-            current.data.push_back   ( vif.mon_cb.ast_data_o [port] );
-            current.empty.push_back  ( vif.mon_cb.ast_empty_o[port] );
-            current.channel.push_back( vif.ast_channel_o     [port] );
+            current.data.push_back   ( vif_out[port].mon_cb.data    );
+            current.empty.push_back  ( vif_out[port].mon_cb.empty   );
+            current.channel.push_back( vif_out[port].mon_cb.channel );
 
-            if( vif.mon_cb.ast_endofpacket_o[port] ) 
+            if( vif_out[port].mon_cb.endofpacket ) 
               begin
                 current.eop_beat = beat_idx;
                 in_packet        = 0;

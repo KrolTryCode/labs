@@ -6,38 +6,44 @@ class ast_conv_in_driver #(
   localparam int BITS_PER_BYTE = 8;
   localparam int BYTES_IN      = DATA_IN_W / BITS_PER_BYTE;
   localparam int EMPTY_IN_W    = $clog2(DATA_IN_W/8) ? $clog2(DATA_IN_W/8) : 1;
-  
+
   typedef ast_conv_transaction #( DATA_IN_W, DATA_OUT_W, CHANNEL_W ) tr_t;
 
-  virtual ast_conv_if #( DATA_IN_W, DATA_OUT_W, CHANNEL_W ) vif;
+  virtual avalon_st_if    #( .DATA_W( DATA_IN_W  ), .CHANNEL_W( CHANNEL_W ) ) in_vif;
+  virtual avalon_st_if    #( .DATA_W( DATA_OUT_W ), .CHANNEL_W( CHANNEL_W ) ) out_vif;
+  virtual ast_conv_ctrl_if                                                    ctrl_vif;
 
   mailbox #( tr_t ) drv_mbx;
   mailbox #( tr_t ) in_mbx;
   bit               busy;
   int               back_pressure_prob;
 
-  function new( 
-    virtual ast_conv_if #( DATA_IN_W, DATA_OUT_W, CHANNEL_W ) vif,
+  function new(
+    virtual avalon_st_if    #( .DATA_W( DATA_IN_W  ), .CHANNEL_W( CHANNEL_W ) ) in_vif,
+    virtual avalon_st_if    #( .DATA_W( DATA_OUT_W ), .CHANNEL_W( CHANNEL_W ) ) out_vif,
+    virtual ast_conv_ctrl_if                                                    ctrl_vif,
     mailbox #( tr_t ) drv_mbx,
     mailbox #( tr_t ) in_mbx
   );
-    this.vif                = vif;
+    this.in_vif             = in_vif;
+    this.out_vif            = out_vif;
+    this.ctrl_vif           = ctrl_vif;
     this.drv_mbx            = drv_mbx;
     this.in_mbx             = in_mbx;
     this.back_pressure_prob = 0;
   endfunction
 
   task reset();
-    vif.srst_i              = 1'b1;
-    vif.ast_valid_i         = 1'b0;
-    vif.ast_startofpacket_i = 1'b0;
-    vif.ast_endofpacket_i   = 1'b0;
-    vif.ast_empty_i         =  '0;
-    vif.ast_data_i          =  '0;
-    vif.ast_channel_i       =  '0;
-    repeat(2) @( posedge vif.clk_i );
-    vif.srst_i = 1'b0;
-    repeat(2) @( posedge vif.clk_i );
+    ctrl_vif.srst_i      = 1'b1;
+    in_vif.valid         = 1'b0;
+    in_vif.startofpacket = 1'b0;
+    in_vif.endofpacket   = 1'b0;
+    in_vif.empty         =  '0;
+    in_vif.data          =  '0;
+    in_vif.channel       =  '0;
+    repeat( 2 ) @( posedge in_vif.clk_i );
+    ctrl_vif.srst_i = 1'b0;
+    repeat( 2 ) @( posedge in_vif.clk_i );
   endtask
 
   task run();
@@ -55,11 +61,11 @@ class ast_conv_in_driver #(
   task run_ready();
     forever
       begin
-         @( vif.cb_out );
+        @( posedge out_vif.clk_i );
         if( back_pressure_prob > 0 && $urandom_range( 0, 99 ) < back_pressure_prob )
-          vif.cb_out.ast_ready_i <= 1'b0;
+          out_vif.ready <= 1'b0;
         else
-          vif.cb_out.ast_ready_i <= 1'b1;
+          out_vif.ready <= 1'b1;
       end
   endtask
 
@@ -73,27 +79,25 @@ class ast_conv_in_driver #(
       begin
         empty_i = ( i == num_beats - 1 ) ? tr.empty_last : 0;
 
-        @( vif.cb_in );
-        vif.cb_in.ast_valid_i         <= 1'b1;
-        vif.cb_in.ast_data_i          <= tr.beats[i];
+        @( posedge in_vif.clk_i );
+        in_vif.valid         <= 1'b1;
+        in_vif.data          <= tr.beats[i];
+        in_vif.startofpacket <= ( i == 0             ) ? 1'b1 : 1'b0;
+        in_vif.endofpacket   <= ( i == num_beats - 1 ) ? 1'b1 : 1'b0;
+        in_vif.empty         <= empty_i;
+        in_vif.channel       <= ( i == 0             ) ? tr.channel : '0;
 
-        vif.cb_in.ast_startofpacket_i <= ( i == 0             ) ? 1'b1 : 1'b0;
-        vif.cb_in.ast_endofpacket_i   <= ( i == num_beats - 1 ) ? 1'b1 : 1'b0;
-
-        vif.cb_in.ast_empty_i         <= empty_i;
-        vif.cb_in.ast_channel_i       <= ( i == 0             ) ? tr.channel : '0;
-
-        while( !vif.cb_in.ast_ready_o )
-          @( vif.cb_in );
+        while( !in_vif.ready )
+          @( posedge in_vif.clk_i );
       end
 
-    @( vif.cb_in );
-    vif.cb_in.ast_valid_i         <= 1'b0;
-    vif.cb_in.ast_startofpacket_i <= 1'b0;
-    vif.cb_in.ast_endofpacket_i   <= 1'b0;
-    vif.cb_in.ast_empty_i         <=  '0;
-    vif.cb_in.ast_data_i          <=  '0;
-    vif.cb_in.ast_channel_i       <=  '0;
+    @( posedge in_vif.clk_i );
+    in_vif.valid         <= 1'b0;
+    in_vif.startofpacket <= 1'b0;
+    in_vif.endofpacket   <= 1'b0;
+    in_vif.empty         <=  '0;
+    in_vif.data          <=  '0;
+    in_vif.channel       <=  '0;
   endtask
 
 endclass

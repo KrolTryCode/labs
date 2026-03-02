@@ -4,20 +4,24 @@ class inc_driver #(
 );
   typedef inc_transaction #( DATA_WIDTH, ADDR_WIDTH ) tr_t;
 
-  virtual inc_if #( DATA_WIDTH, ADDR_WIDTH ) vif;
+  virtual inc_ctrl_if     #( ADDR_WIDTH              ) vif_ctrl;
+  virtual avalon_mm_wr_if #( ADDR_WIDTH, DATA_WIDTH  ) vif_wr;
+
   mailbox #( tr_t ) mbx;
   mailbox #( tr_t ) scb_mbx;
 
   parameter int TIMEOUT_CYCLES = 500;
 
   function new(
-    virtual inc_if #( DATA_WIDTH, ADDR_WIDTH ) vif,
+    virtual inc_ctrl_if     #( ADDR_WIDTH             ) vif_ctrl,
+    virtual avalon_mm_wr_if #( ADDR_WIDTH, DATA_WIDTH ) vif_wr,
     mailbox #( tr_t ) mbx,
     mailbox #( tr_t ) scb_mbx
   );
-    this.vif     = vif;
-    this.mbx     = mbx;
-    this.scb_mbx = scb_mbx;
+    this.vif_ctrl = vif_ctrl;
+    this.vif_wr   = vif_wr;
+    this.mbx      = mbx;
+    this.scb_mbx  = scb_mbx;
   endfunction
 
   task run();
@@ -26,24 +30,22 @@ class inc_driver #(
       begin
         mbx.get( tr );
 
-        @( posedge vif.clk_i iff vif.waitrequest_o === 1'b0 );
+        @( posedge vif_ctrl.clk_i iff vif_ctrl.waitrequest_o === 1'b0 );
         // to save reference 
         scb_mbx.put( tr );
 
-        vif.base_addr_i = tr.base_addr;
-        vif.length_i    = tr.length;
-        vif.run_i       = 1'b1;
+        vif_ctrl.base_addr_i = tr.base_addr;
+        vif_ctrl.length_i    = tr.length;
+        vif_ctrl.run_i       = 1'b1;
 
-        @( posedge vif.clk_i );
-
-        vif.run_i = 1'b0;
+        @( posedge vif_ctrl.clk_i );
+        vif_ctrl.run_i = 1'b0;
 
         begin : wait_busy
-          int wait_cycles;
-          wait_cycles = 0;
-          while( vif.waitrequest_o !== 1'b1 ) 
+          int wait_cycles = 0;
+          while( vif_ctrl.waitrequest_o !== 1'b1 ) 
             begin
-              @( posedge vif.clk_i );
+              @( posedge vif_ctrl.clk_i );
               wait_cycles = wait_cycles + 1;
               if( wait_cycles > TIMEOUT_CYCLES  ) 
                 begin
@@ -55,11 +57,10 @@ class inc_driver #(
         end
 
         begin : wait_done
-          int wait_cycles;
-          wait_cycles = 0;
-          while( vif.waitrequest_o !== 1'b0 ) 
+          int wait_cycles = 0;
+          while( vif_ctrl.waitrequest_o !== 1'b0 ) 
             begin
-              @( posedge vif.clk_i );
+              @( posedge vif_ctrl.clk_i );
               wait_cycles = wait_cycles + 1;
               if( wait_cycles > TIMEOUT_CYCLES ) 
                 begin
@@ -73,10 +74,10 @@ class inc_driver #(
   endtask
 
   local task do_reset();
-    vif.srst_i = 1'b1;
-    repeat( 2 ) @( posedge vif.clk_i );
-    vif.srst_i = 1'b0;
-    @( posedge vif.clk_i );
+    vif_ctrl.srst_i = 1'b1;
+    repeat( 2 ) @( posedge vif_ctrl.clk_i );
+    vif_ctrl.srst_i = 1'b0;
+    @( posedge vif_ctrl.clk_i );
   endtask
 
 endclass
